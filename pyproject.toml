@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yukkuri-app"
-version = "0.2.0"
+version = "0.3.0"
 description = "Linux PipeWire Real-time Voice Changer to classic Yukkuri (AquesTalk1) audio"
 readme = "README.md"
 authors = [
@@ -19,10 +19,12 @@ dependencies = [
     "pypinyin>=0.50.0",
     "sherpa-onnx>=1.10.0",
     "vosk>=0.3.45",
+    "customtkinter>=5.2.0",
 ]
 
 [project.scripts]
 yukkuri = "yukkuri.cli:main"
+yukkuri-gui = "yukkuri.gui.app:main"
 
 [tool.setuptools.packages.find]
 include = ["yukkuri*"]

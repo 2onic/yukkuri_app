@@ -49,6 +49,10 @@ def parse_args() -> argparse.Namespace:
         help="禁用 pactl 自动动态加载虚拟声卡"
     )
     parser.add_argument(
+        "--gui", action="store_true",
+        help="启动桌面图形控制界面 (GUI)"
+    )
+    parser.add_argument(
         "--list-devices", action="store_true",
         help="列出所有可用音频输入/输出设备并退出"
     )
@@ -56,6 +60,15 @@ def parse_args() -> argparse.Namespace:
 
 def main():
     args = parse_args()
+
+    if args.gui:
+        try:
+            from yukkuri.gui.app import main as gui_main
+            return gui_main()
+        except ImportError as e:
+            print(f"[错误] 无法加载 GUI 模块: {e}", file=sys.stderr)
+            print("请确认已安装 customtkinter 依赖: pip install customtkinter", file=sys.stderr)
+            return 1
 
     if args.list_devices:
         print("\n=== 系统可用音频设备列表 ===")

@@ -4,3 +4,4 @@ pykakasi>=2.3.0
 pypinyin>=0.50.0
 sherpa-onnx>=1.10.0
 vosk>=0.3.45
+customtkinter>=5.2.0

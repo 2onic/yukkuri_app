@@ -28,6 +28,7 @@ class YukkuriPipeline:
         g2p: Optional[PolyglotG2P] = None,
         vad: Optional[SileroVAD] = None,
         mic_manager: Optional[VirtualMicManager] = None,
+        on_segment_processed: Optional[callable] = None,
     ):
         self.config = config
         self.asr = asr
@@ -35,6 +36,7 @@ class YukkuriPipeline:
         self.g2p = g2p or PolyglotG2P()
         self.vad = vad
         self.mic_manager = mic_manager
+        self.on_segment_processed = on_segment_processed
 
         self.player = AudioPlayer(target_sink=config.target_sink)
         self.mic_stream = MicrophoneStream(
@@ -77,6 +79,60 @@ class YukkuriPipeline:
         print(f"\n[识别原文]: {text}")
         print(f"[油库里音标]: {koe}")
         print(f"[推流音频]: {len(wav_data)} 字节 -> {self.config.target_sink}  (耗时: ASR {t_asr:.1f}ms | G2P {t_g2p:.1f}ms | TTS {t_tts:.1f}ms | 合计: {total_time:.1f}ms)")
+
+        if self.on_segment_processed:
+            try:
+                stats = {
+                    "t_asr": t_asr,
+                    "t_g2p": t_g2p,
+                    "t_tts": t_tts,
+                    "total_time": total_time,
+                    "wav_size": len(wav_data),
+                    "manual": False,
+                }
+                self.on_segment_processed(text, koe, stats)
+            except Exception as e:
+                print(f"[UI 回调异常]: {e}", file=sys.stderr)
+
+    def speak_text(self, text: str):
+        """手动输入文本进行合成与推流 (快捷试听/开黑播报)"""
+        if not text.strip():
+            return
+
+        t1 = time.perf_counter()
+        koe = self.g2p.convert(text.strip(), lang=self.config.lang)
+        t_g2p = (time.perf_counter() - t1) * 1000
+
+        if not koe:
+            return
+
+        t2 = time.perf_counter()
+        wav_data = self.tts.synthesize(koe, speed=self.config.speed)
+        t_tts = (time.perf_counter() - t2) * 1000
+
+        if not wav_data:
+            return
+
+        self.player.play(wav_data)
+
+        total_time = t_g2p + t_tts
+        print(f"\n[快捷播报]: {text}")
+        print(f"[油库里音标]: {koe}")
+        print(f"[推流音频]: {len(wav_data)} 字节 -> {self.config.target_sink}  (耗时: G2P {t_g2p:.1f}ms | TTS {t_tts:.1f}ms | 合计: {total_time:.1f}ms)")
+
+        if self.on_segment_processed:
+            try:
+                stats = {
+                    "t_asr": 0.0,
+                    "t_g2p": t_g2p,
+                    "t_tts": t_tts,
+                    "total_time": total_time,
+                    "wav_size": len(wav_data),
+                    "manual": True,
+                }
+                self.on_segment_processed(text, koe, stats)
+            except Exception as e:
+                print(f"[UI 回调异常]: {e}", file=sys.stderr)
 
     def run(self):
         """启动主循环"""

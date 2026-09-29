@@ -37,3 +37,4 @@ env/
 *.wav
 *.mp3
 *.log
+tmp/
