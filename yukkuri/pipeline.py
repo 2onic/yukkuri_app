@@ -16,6 +16,7 @@ from yukkuri.audio.vad import SileroVAD
 from yukkuri.audio.capture import MicrophoneStream
 from yukkuri.audio.player import AudioPlayer
 from yukkuri.audio.virtual_mic import VirtualMicManager
+from yukkuri.audio.loopback import LoopbackManager
 
 class YukkuriPipeline:
     """连接音频采集、端点检测、语音识别、音标转写、语音合成与推流的核心流水线"""
@@ -28,6 +29,7 @@ class YukkuriPipeline:
         g2p: Optional[PolyglotG2P] = None,
         vad: Optional[SileroVAD] = None,
         mic_manager: Optional[VirtualMicManager] = None,
+        loopback_manager: Optional[LoopbackManager] = None,
         on_segment_processed: Optional[callable] = None,
     ):
         self.config = config
@@ -36,6 +38,7 @@ class YukkuriPipeline:
         self.g2p = g2p or PolyglotG2P()
         self.vad = vad
         self.mic_manager = mic_manager
+        self.loopback_manager = loopback_manager or LoopbackManager(source_name=config.source_name)
         self.on_segment_processed = on_segment_processed
 
         self.player = AudioPlayer(target_sink=config.target_sink)
@@ -54,6 +57,15 @@ class YukkuriPipeline:
                 self.config.voice = voice
                 return True
         return False
+
+    def set_loopback(self, enable: bool) -> bool:
+        """动态开启或关闭本地回放监听 (耳机/扬声器同步收听)"""
+        self.config.enable_loopback = enable
+        if enable:
+            return self.loopback_manager.start()
+        else:
+            self.loopback_manager.stop()
+            return True
 
     def process_segment(self, segment):
         """处理一段已完成断句的语音切片"""
@@ -148,11 +160,15 @@ class YukkuriPipeline:
         if self.mic_manager:
             self.mic_manager.setup()
 
+        if self.config.enable_loopback:
+            self.loopback_manager.start()
+
         print("\n" + "=" * 65)
         print("  油库里实时语音转换器已就绪")
         print(f"  - 识别引擎: {self.config.engine} (语种: {self.config.lang})")
         print(f"  - 合成引擎: AquesTalk1 (声线: {self.config.voice}, 语速: {self.config.speed})")
         print(f"  - 音频输出: {self.config.target_sink}")
+        print(f"  - 回放监听: {'已开启 (耳机可同步收听)' if self.config.enable_loopback else '已关闭'}")
         if self.config.device is not None:
             print(f"  - 输入设备 ID: {self.config.device}")
         print("  - 提示: 请对着麦克风说话，按 Ctrl+C 可停止程序")
@@ -195,6 +211,9 @@ class YukkuriPipeline:
                 pass
 
         self.player.stop()
+
+        if self.loopback_manager:
+            self.loopback_manager.stop()
 
         if self.mic_manager:
             self.mic_manager.cleanup()

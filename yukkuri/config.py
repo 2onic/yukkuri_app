@@ -26,6 +26,8 @@ class AppConfig:
     voice: str = "f1"                   # 默认声线: "f1", 可选 "f2", "f3", "m1", "m2", "imd1", "jgr", "dvd", "r1"
     speed: int = 100                    # 语速 50 ~ 300
     target_sink: str = "yukkuri_sink"   # 输出虚拟 Sink 名称
+    source_name: str = "yukkuri_source" # 虚拟输入 Source 名称 (供录音或回放监听捕获)
+    enable_loopback: bool = False       # 是否开启自身回放监听 (耳机/扬声器实时听到油库里语音)
     device: Optional[int] = None        # 麦克风输入设备 ID (None 为系统默认)
 
     # 音频参数

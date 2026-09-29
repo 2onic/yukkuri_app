@@ -45,6 +45,10 @@ def parse_args() -> argparse.Namespace:
         help="油库里语速 50~300 (默认: 100)"
     )
     parser.add_argument(
+        "--loopback", "--monitor", action="store_true", dest="loopback",
+        help="开启本地回放监听 (耳机/扬声器可实时听到合成出的油库里语音)"
+    )
+    parser.add_argument(
         "--device", type=int, default=None,
         help="麦克风输入设备索引 ID (默认使用系统默认录音设备)"
     )
@@ -89,6 +93,7 @@ def main():
         device=args.device,
         custom_model_path=args.model,
         enable_dynamic_mic=not args.no_dynamic_mic,
+        enable_loopback=args.loopback,
     )
 
     # 1. 查找并初始化 AquesTalk 多声线合成引擎

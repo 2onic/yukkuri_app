@@ -173,10 +173,22 @@ class YukkuriApp(ctk.CTk):
         self.vad_slider.set(350)
         self.vad_slider.pack(fill="x", padx=12, pady=(2, 12))
 
-        # 动态声卡开关
-        self.switch_dyn_mic = ctk.CTkSwitch(left_panel, text="退出时自动释放虚拟麦克风")
+        # 分组 4: 监听与虚拟声卡
+        opt_card = self._create_card(left_panel, "监听与虚拟麦克风")
+
+        self.switch_loopback = ctk.CTkSwitch(
+            opt_card,
+            text="回放监听 (自己也能听到)",
+            command=self._on_loopback_toggled
+        )
+        self.switch_loopback.pack(padx=12, pady=(6, 6), anchor="w")
+
+        self.switch_dyn_mic = ctk.CTkSwitch(
+            opt_card,
+            text="退出时自动释放虚拟声卡"
+        )
         self.switch_dyn_mic.select()
-        self.switch_dyn_mic.pack(padx=14, pady=10, anchor="w")
+        self.switch_dyn_mic.pack(padx=12, pady=(0, 10), anchor="w")
 
         # 3. 右侧内容区 (日志与快捷播报)
         right_panel = ctk.CTkFrame(self, corner_radius=10)
@@ -300,6 +312,23 @@ class YukkuriApp(ctk.CTk):
         else:
             self._append_log("系统", f"预设声线已选定: {choice}")
 
+    def _on_loopback_toggled(self):
+        enable = bool(self.switch_loopback.get())
+        if self.pipeline and self.is_running:
+            ok = self.pipeline.set_loopback(enable)
+            if enable:
+                if ok:
+                    self._append_log("系统", "已开启回放监听 (通过 pw-loopback)")
+                else:
+                    self._append_log("系统", "回放监听启动失败，请确认系统支持 pw-loopback 或 pactl")
+            else:
+                self._append_log("系统", "已关闭回放监听")
+        else:
+            if enable:
+                self._append_log("系统", "已开启回放监听预设 (启动转换器时将自动开启)")
+            else:
+                self._append_log("系统", "已关闭回放监听预设")
+
     def _on_speed_changed(self, value):
         spd = int(value)
         self.speed_label.configure(text=f"油库里语速: {spd}%")
@@ -359,6 +388,7 @@ class YukkuriApp(ctk.CTk):
         speed = int(self.speed_slider.get())
         vad_silence = self.vad_slider.get() / 1000.0
         enable_dyn_mic = bool(self.switch_dyn_mic.get())
+        enable_loopback = bool(self.switch_loopback.get())
 
         selected_voice_opt = self.voice_menu.get()
         selected_voice = selected_voice_opt.split(":")[0].strip() if ":" in selected_voice_opt else "f1"
@@ -370,7 +400,8 @@ class YukkuriApp(ctk.CTk):
             speed=speed,
             device=device_id,
             vad_min_silence=vad_silence,
-            enable_dynamic_mic=enable_dyn_mic
+            enable_dynamic_mic=enable_dyn_mic,
+            enable_loopback=enable_loopback,
         )
 
         self._append_log("系统", "正在启动实时转换器，加载语音模型与驱动...")
