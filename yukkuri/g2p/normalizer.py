@@ -14,9 +14,19 @@ DIGIT_JA = {
     '5': 'ゴ', '6': 'ロク', '7': 'ナナ', '8': 'ハチ', '9': 'キュウ'
 }
 
+DIGIT_EN = {
+    '0': 'ぜろ', '1': 'わん', '2': 'つー', '3': 'すりー', '4': 'ふぉー',
+    '5': 'ふぁいぶ', '6': 'しっくす', '7': 'せぶん', '8': 'えいと', '9': 'ないん'
+}
+
 def normalize_digits(digits: str, lang: str = "zh") -> str:
     """将数字字符串按语种转换为假名序列"""
-    digit_map = DIGIT_JA if lang == "ja" else DIGIT_CN
+    if lang == "ja":
+        digit_map = DIGIT_JA
+    elif lang == "en":
+        digit_map = DIGIT_EN
+    else:
+        digit_map = DIGIT_CN
     tokens = [digit_map.get(d, '') for d in digits if d in digit_map]
     return '/'.join(tokens)
 

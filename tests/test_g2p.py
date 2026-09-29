@@ -30,6 +30,10 @@ class TestPolyglotG2P(unittest.TestCase):
         result = text_to_yukkuri_polyglot("123", current_lang="ja")
         self.assertEqual(result, "イチ/ニ/サン")
 
+    def test_digits_english(self):
+        result = text_to_yukkuri_polyglot("1234", current_lang="en")
+        self.assertEqual(result, "わん/つー/すりー/ふぉー")
+
     def test_custom_rule(self):
         g2p = PolyglotG2P()
         g2p.add_custom_rule("bilibili", "びりびり")
