@@ -1,17 +1,18 @@
-# 🍘 Yukkuri Real-time Voice Changer (油库里实时变声器)
+# yukkuri_app
 
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20PipeWire-blue.svg)](https://pipewire.org/)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-green.svg)](https://www.python.org/)
 [![Engine](https://img.shields.io/badge/ASR-SenseVoice%20%7C%20Vosk-orange.svg)](https://github.com/FunAudioLLM/SenseVoice)
 [![TTS](https://img.shields.io/badge/TTS-AquesTalk1-red.svg)](https://www.a-quest.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-一个运行于 Linux (PipeWire) 下的**实时语音转经典油库里音效**工具。
+一个运行于 Linux (PipeWire) 下的**实时语音转油库里音效**工具。
 
 说出普通话、英语或日语，程序将实时识别，并通过经典的 **AquesTalk1** 引擎实时合成出最纯正的东方/油库里解说风格语音，注入到虚拟麦克风节点中。可在 Discord、腾讯会议、OBS、游戏开黑中直接作为麦克风使用！
 
 ---
 
-## ✨ 核心特性
+## 核心特性
 
 - **阿里 SenseVoice-Small 端到端识别**：毫秒级超快推理（30~50ms），中文普通话及口语闲聊极高准确率，告别吞字与识别中断。
 - **Silero-VAD 灵敏端点断句**：说话停顿 350ms 即自动触发识别并推送合成，接近零延迟实时体验。
@@ -25,7 +26,7 @@
 
 ---
 
-## 🛠️ 系统架构
+## 系统架构
 
 ```mermaid
 flowchart LR
@@ -40,7 +41,7 @@ flowchart LR
 
 ---
 
-## 🚀 快速上手
+## 快速上手
 
 ### 1. 克隆仓库与安装依赖
 
@@ -83,7 +84,7 @@ chmod +x run.sh yukkuri_bridge.py
 
 ---
 
-## ⚙️ 进阶参数说明
+## 进阶参数说明
 
 `./run.sh`（或 `python yukkuri_bridge.py`）支持以下自定义命令行参数：
 
@@ -114,7 +115,7 @@ chmod +x run.sh yukkuri_bridge.py
 
 ---
 
-## 📜 版权与免责声明
+## 版权与免责声明
 
 1. **AquesTalk1**：
    - 本项目调用的语音合成动态库 `libAquesTalk.so` 属于 **[株式会社アクエスト (Aquest Corp.)](https://www.a-quest.com/)** 的版权财产；

@@ -1,0 +1,44 @@
+MIT License
+
+Copyright (c) 2026 colimy
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+==============================================================================
+Third-Party Notices and Licenses
+==============================================================================
+
+1. AquesTalk (libAquesTalk.so)
+   - Copyright (C) 2006-2025 Aquest Corp. All rights reserved.
+   - Website: https://www.a-quest.com/
+   - The proprietary library "libAquesTalk.so" is the intellectual property of 
+     Aquest Corp. It is NOT covered by the MIT License above.
+   - Use of AquesTalk is permitted for personal, non-commercial purposes in 
+     accordance with the terms specified by Aquest Corp.
+   - Any commercial use requires a separate commercial license from Aquest Corp.
+
+2. SenseVoice-Small
+   - Copyright (c) Alibaba Group.
+   - Licensed under the Apache License, Version 2.0.
+   - Website: https://github.com/FunAudioLLM/SenseVoice
+
+3. Silero VAD
+   - Copyright (c) 2021 Silero Team.
+   - Licensed under the MIT License.
+   - Website: https://github.com/snakers4/silero-vad

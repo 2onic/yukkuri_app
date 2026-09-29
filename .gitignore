@@ -4,7 +4,7 @@ __pycache__/
 *$py.class
 *.so.1
 
-# AI 模型文件 (文件体积过大，请使用 ./setup_models.sh 自动下载)
+# AI 模型文件
 sensevoice
 sensevoice/
 sherpa-onnx-*/
