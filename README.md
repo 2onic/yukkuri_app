@@ -8,21 +8,19 @@
 
 一个运行于 Linux (PipeWire) 下的**实时语音转油库里音效**工具。
 
-说出普通话、英语或日语，程序将实时识别，并通过经典的 **AquesTalk1** 引擎实时合成出最纯正的东方/油库里解说风格语音，注入到虚拟麦克风节点中。可在 Discord、腾讯会议、OBS、游戏开黑中直接作为麦克风使用！
+说出普通话、英语或日语，程序将实时识别，并通过 **AquesTalk1** 引擎实时合成出油库里语音，注入到虚拟麦克风节点中。可在 Discord、腾讯会议、OBS中直接作为麦克风使用。
 
 ---
 
 ## 核心特性
 
-- **阿里 SenseVoice-Small 端到端识别**：毫秒级超快推理（30~50ms），中文普通话及口语闲聊极高准确率，告别吞字与识别中断。
-- **Silero-VAD 灵敏端点断句**：说话停顿 350ms 即自动触发识别并推送合成，接近零延迟实时体验。
-- **纯正经典油库里空耳调教 (Polyglot G2P)**：
-  - **中文**：自动将汉字转为拼音并映射为经典的油库里假名音标（如 *“你好”* -> `にー/はお`，*“我是油库里”* -> `うぉ/しー/ゆっくり`，完美还原 B 站油库里解说味）；
+- **经典油库里空耳调教 (Polyglot G2P)**：
+  - **中文**：自动将汉字转为拼音并映射为油库里假名音标（如 *“你好”* -> `にー/はお`，*“我是油库里”* -> `うぉ/しー/ゆっくり`）；
   - **英文**：常用词外来语化 + 音节音译 + 字母拼读（如 *“Hello world”* -> `へろー/わーるど`，*“CPU”* -> `しーぴーゆー`）；
   - **日文**：原生假名合成，自动纠偏助词读音（`は/へ` -> `わ/え`）。
-  - **中英日数字混排**：无需手动切换语种，随心所欲混合说话！
-- **异步双缓冲队列推流**：麦克风采集、VAD 检测与 TTS 合成/播放完全解耦，绝不阻塞录音，杜绝卡顿与丢音。
-- **PipeWire 虚拟声卡原生集成**：自动将音频送入虚拟麦克风（`Yukkuri Virtual Mic`），开黑软件开箱即用。
+  - **中英日数字混排**：无需手动切换语种，支持混合。
+- **异步双缓冲队列推流**：麦克风采集、VAD 检测与 TTS 合成/播放解耦，不阻塞录音。
+- **PipeWire 虚拟声卡原生集成**：自动将音频送入虚拟麦克风（`Yukkuri Virtual Mic`）。
 
 ---
 
@@ -46,10 +44,9 @@ flowchart LR
 ### 1. 克隆仓库与安装依赖
 
 ```bash
-git clone https://github.com/<你的用户名>/yukkuri_app.git
+git clone git@github.com:2onic/yukkuri_app.git
 cd yukkuri_app
 
-# 建议在 Conda 或 Python 虚拟环境中运行
 pip install -r requirements.txt
 ```
 
@@ -73,14 +70,14 @@ chmod +x setup_models.sh
 ./setup_models.sh
 ```
 
-### 4. 运行实时变声器
+### 4. 运行app
 
 ```bash
 chmod +x run.sh yukkuri_bridge.py
 ./run.sh
 ```
 
-现在对着麦克风说话，并在 Discord / QQ / OBS 中将音频输入设备选择为 **`Yukkuri Virtual Mic`** 即可！
+现在对着麦克风说话，并在 Discord / QQ / OBS 中将音频输入设备选择为 **`Yukkuri Virtual Mic`** 即可。
 
 ---
 
@@ -109,7 +106,7 @@ chmod +x run.sh yukkuri_bridge.py
 # 切换为日文语境发音
 ./run.sh --lang ja
 
-# （可选）切换为轻量 Vosk 引擎
+# 切换为轻量 Vosk 引擎
 ./run.sh --engine vosk --lang zh
 ```
 

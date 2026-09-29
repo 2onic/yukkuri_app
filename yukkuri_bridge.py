@@ -3,8 +3,7 @@
 
 """
 油库里 (Yukkuri) 实时语音转换器
-支持 SenseVoice (高精度多语种端到端) 与 Vosk 双引擎
-中英日混读、经典油库里音效 (AquesTalk1) 实时推流 PipeWire
+支持 SenseVoice 与 Vosk 双引擎
 """
 
 import os

@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 echo "=========================================="
-echo "  油库里实时变声器 - 模型一键配置工具"
+echo "  yukkuri_app - 模型一键配置工具"
 echo "=========================================="
 
 # 1. 下载 Silero-VAD 语音活动检测器 (约 630KB)
@@ -34,4 +34,4 @@ fi
 
 echo ""
 echo "=== 模型准备完成！==="
-echo "现在可以直接执行 ./run.sh 启动油库里实时语音转换器。"
+echo "现在可以直接执行 ./run.sh 启动yukkuri_app。"
