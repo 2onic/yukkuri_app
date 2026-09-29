@@ -1,5 +1,5 @@
 """
-Yukkuri 现代桌面图形界面 (CustomTkinter GUI)
+Yukkuri 图形界面 (CustomTkinter GUI)
 提供可视化声卡选择、语速调节、实时转写展示与快捷播报
 """
 
@@ -30,7 +30,7 @@ class YukkuriApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("Yukkuri Voice Changer - 油库里实时变声器")
+        self.title("Yukkuri_app - 油库里语音转换器")
         self.geometry("1020x720")
         self.minsize(920, 640)
 
@@ -66,7 +66,7 @@ class YukkuriApp(ctk.CTk):
 
         title_label = ctk.CTkLabel(
             header_frame,
-            text="油库里实时变声器 (Yukkuri Voice Changer)",
+            text="油库里语音转换器 (Yukkuri Voice Transformer)",
             font=ctk.CTkFont(size=18, weight="bold")
         )
         title_label.grid(row=0, column=0, padx=16, pady=10, sticky="w")
@@ -98,7 +98,7 @@ class YukkuriApp(ctk.CTk):
         # 启动/停止大按钮
         self.btn_toggle = ctk.CTkButton(
             left_panel,
-            text="▶ 启动变声器",
+            text="▶ 启动转换器",
             height=46,
             font=ctk.CTkFont(size=16, weight="bold"),
             fg_color="#2FA572",
@@ -191,7 +191,7 @@ class YukkuriApp(ctk.CTk):
             corner_radius=8
         )
         self.log_box.grid(row=1, column=0, padx=12, pady=6, sticky="nsew")
-        self._append_log("系统", "欢迎使用 Yukkuri 实时语音转换器。请在左侧点击【启动变声器】开始体验！")
+        self._append_log("系统", "欢迎使用 Yukkuri_app。请在左侧点击【启动转换器】开始体验！")
 
         # 快捷测试与播报区域
         quick_frame = ctk.CTkFrame(right_panel, corner_radius=8, fg_color=("#323232", "#242424"))
@@ -200,13 +200,13 @@ class YukkuriApp(ctk.CTk):
 
         ctk.CTkLabel(
             quick_frame,
-            text="快捷文字播报 (无需说话，直接合成并推送到虚拟麦克风):",
+            text="文字转语音 (无需说话，直接合成并推送到虚拟麦克风):",
             font=ctk.CTkFont(size=12, weight="bold")
         ).grid(row=0, column=0, columnspan=2, padx=12, pady=(8, 4), sticky="w")
 
         self.entry_speak = ctk.CTkEntry(
             quick_frame,
-            placeholder_text="输入想要合成的文本，如: 大家好，我是油库里...",
+            placeholder_text="输入想要合成的文本...",
             height=34
         )
         self.entry_speak.grid(row=1, column=0, padx=(12, 8), pady=(0, 10), sticky="ew")
@@ -309,7 +309,7 @@ class YukkuriApp(ctk.CTk):
             enable_dynamic_mic=enable_dyn_mic
         )
 
-        self._append_log("系统", "正在启动实时变声器，加载语音模型与驱动...")
+        self._append_log("系统", "正在启动实时转换器，加载语音模型与驱动...")
         self.status_indicator.configure(text="● 正在初始化...", text_color="#FFB74D")
         self.btn_toggle.configure(state="disabled", text="正在初始化...")
 
@@ -383,7 +383,7 @@ class YukkuriApp(ctk.CTk):
             self.pipeline.stop()
 
     def _send_manual_speak(self):
-        """触发快捷文本推流播报"""
+        """触发文字转语音推流播报"""
         text = self.entry_speak.get().strip()
         if not text:
             return
@@ -392,7 +392,7 @@ class YukkuriApp(ctk.CTk):
             self.pipeline.speak_text(text)
             self.entry_speak.delete(0, "end")
         else:
-            self._append_log("系统", "提示：请先启动变声器，即可将文字实时推流至虚拟麦克风！")
+            self._append_log("系统", "提示：请先启动转换器，即可将文字实时推流至虚拟麦克风！")
 
     def _process_queue(self):
         """在主线程定时轮询事件队列"""
@@ -401,20 +401,20 @@ class YukkuriApp(ctk.CTk):
 
             if msg_type == "started":
                 self.is_running = True
-                self.btn_toggle.configure(state="normal", text="⏹ 停止变声器", fg_color="#E04747", hover_color="#C62828")
+                self.btn_toggle.configure(state="normal", text="⏹ 停止转换器", fg_color="#E04747", hover_color="#C62828")
                 self.status_indicator.configure(text="● 正在运行 (已监听)", text_color="#66BB6A")
-                self._append_log("系统", "变声器启动成功！请在开黑软件中将麦克风选择为 [Yukkuri Virtual Mic]")
+                self._append_log("系统", "转换器启动成功！请在开黑软件中将麦克风选择为 [Yukkuri Virtual Mic]")
 
             elif msg_type == "stopped":
                 self.is_running = False
                 self.pipeline = None
-                self.btn_toggle.configure(state="normal", text="▶ 启动变声器", fg_color="#2FA572", hover_color="#228B5B")
+                self.btn_toggle.configure(state="normal", text="▶ 启动转换器", fg_color="#2FA572", hover_color="#228B5B")
                 self.status_indicator.configure(text="● 已停止", text_color="#9E9E9E")
-                self._append_log("系统", "变声器已停止。")
+                self._append_log("系统", "转换器已停止。")
 
             elif msg_type == "error":
                 self.is_running = False
-                self.btn_toggle.configure(state="normal", text="▶ 启动变声器", fg_color="#2FA572", hover_color="#228B5B")
+                self.btn_toggle.configure(state="normal", text="▶ 启动转换器", fg_color="#2FA572", hover_color="#228B5B")
                 self.status_indicator.configure(text="● 启动失败", text_color="#EF5350")
                 self._append_log("系统", f"错误: {data}")
 
