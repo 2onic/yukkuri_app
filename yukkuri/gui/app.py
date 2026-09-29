@@ -105,7 +105,19 @@ class YukkuriApp(ctk.CTk):
             hover_color="#228B5B",
             command=self._toggle_running
         )
-        self.btn_toggle.pack(fill="x", padx=12, pady=(12, 16))
+        self.btn_toggle.pack(fill="x", padx=12, pady=(12, 8))
+
+        # 模型管理与下载按钮
+        self.btn_models = ctk.CTkButton(
+            left_panel,
+            text="语音模型管理与下载",
+            height=34,
+            font=ctk.CTkFont(size=13, weight="bold"),
+            fg_color="#37474F",
+            hover_color="#455A64",
+            command=self._open_model_manager
+        )
+        self.btn_models.pack(fill="x", padx=12, pady=(0, 14))
 
         # 分组 1: 引擎与语种
         eng_card = self._create_card(left_panel, "识别引擎与语种")
@@ -284,6 +296,11 @@ class YukkuriApp(ctk.CTk):
         else:
             self._stop_pipeline()
 
+    def _open_model_manager(self):
+        """打开模型下载与状态管理对话框"""
+        from yukkuri.gui.model_manager import ModelManagerDialog
+        ModelManagerDialog(self)
+
     def _start_pipeline(self):
         """在后台线程初始化并运行变声流水线"""
         # 读取当前界面配置
@@ -328,7 +345,7 @@ class YukkuriApp(ctk.CTk):
                     model_dir = config.find_sensevoice_dir()
                     vad_file = config.find_vad_model()
                     if not model_dir or not vad_file:
-                        self.msg_queue.put(("error", "未找到 SenseVoice 或 Silero-VAD 模型，请运行 ./setup_models.sh 下载"))
+                        self.msg_queue.put(("error_model", "未找到 SenseVoice 或 Silero-VAD 模型，已自动为你打开模型管理器，请点击下载。"))
                         return
 
                     asr_engine = SenseVoiceASR(model_dir, num_threads=config.num_threads)
@@ -341,7 +358,7 @@ class YukkuriApp(ctk.CTk):
                 else:
                     model_dir = config.find_vosk_model_dir()
                     if not model_dir:
-                        self.msg_queue.put(("error", f"未找到 Vosk 对应语种模型 ({config.lang})"))
+                        self.msg_queue.put(("error_model", f"未找到 Vosk 对应语种模型 ({config.lang})，已自动为你打开模型管理器，请点击下载。"))
                         return
                     asr_engine = VoskASR(model_dir, sample_rate=config.sample_rate)
 
@@ -417,6 +434,13 @@ class YukkuriApp(ctk.CTk):
                 self.btn_toggle.configure(state="normal", text="▶ 启动转换器", fg_color="#2FA572", hover_color="#228B5B")
                 self.status_indicator.configure(text="● 启动失败", text_color="#EF5350")
                 self._append_log("系统", f"错误: {data}")
+
+            elif msg_type == "error_model":
+                self.is_running = False
+                self.btn_toggle.configure(state="normal", text="▶ 启动转换器", fg_color="#2FA572", hover_color="#228B5B")
+                self.status_indicator.configure(text="● 缺少模型", text_color="#FFA726")
+                self._append_log("系统", f"提示: {data}")
+                self._open_model_manager()
 
             elif msg_type == "transcription":
                 text = data["text"]

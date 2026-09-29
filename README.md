@@ -53,11 +53,19 @@ pip install -e .
 
 ### 2. 下载语音模型
 
-运行脚本下载 SenseVoice-Small ONNX 量化模型（约 230MB）及 Silero-VAD 检测器（约 630KB）：
+你可以通过命令行脚本下载，或者在启动 GUI 界面后点击【语音模型管理与下载】一键下载：
 
 ```bash
 chmod +x setup_models.sh
+
+# 默认推荐：下载 Silero-VAD + SenseVoice-Small（约 230MB）
 ./setup_models.sh
+
+# 可选：下载 Vosk 离线模型 (支持 zh / ja / en)
+./setup_models.sh --vosk zh
+
+# 可选：全量下载所有模型
+./setup_models.sh --all
 ```
 
 ### 3. 运行转换器
