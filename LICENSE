@@ -21,24 +21,29 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-Third-Party Notices and Licenses
+Third-Party Notices and Disclaimers
 ==============================================================================
 
-1. AquesTalk (libAquesTalk.so)
+1. AquesTalk (Aquest Corp.)
    - Copyright (C) 2006-2025 Aquest Corp. All rights reserved.
    - Website: https://www.a-quest.com/
-   - The proprietary library "libAquesTalk.so" is the intellectual property of 
-     Aquest Corp. It is NOT covered by the MIT License above.
-   - Use of AquesTalk is permitted for personal, non-commercial purposes in 
-     accordance with the terms specified by Aquest Corp.
-   - Any commercial use requires a separate commercial license from Aquest Corp.
+   - NOTICE: This repository does NOT bundle, distribute, or host any proprietary 
+     AquesTalk library or binary (e.g. libAquesTalk.so, AquesTalk.dll).
+   - AquesTalk is NOT covered by the MIT License of this project. Users must 
+     download and acquire the library directly from Aquest Corp.
+   - Personal non-commercial use is governed by Aquest's license terms. Any 
+     commercial usage requires a separate commercial license from Aquest Corp.
 
-2. SenseVoice-Small
-   - Copyright (c) Alibaba Group.
-   - Licensed under the Apache License, Version 2.0.
-   - Website: https://github.com/FunAudioLLM/SenseVoice
+2. Speech Recognition & Acoustic Processing
+   - SenseVoice-Small: Copyright (c) Alibaba Group, licensed under Apache-2.0.
+   - Silero VAD: Copyright (c) 2021 Silero Team, licensed under MIT.
+   - sherpa-onnx: Copyright (c) Next-gen Kaldi, licensed under Apache-2.0.
+   - Vosk: Copyright (c) Alpha Cephei Inc., licensed under Apache-2.0.
 
-3. Silero VAD
-   - Copyright (c) 2021 Silero Team.
-   - Licensed under the MIT License.
-   - Website: https://github.com/snakers4/silero-vad
+3. GUI & Python Libraries
+   - CustomTkinter: Copyright (c) 2023 Tom Schimansky, licensed under MIT.
+
+4. Audio Content Disclaimer
+   - The authors of this software are not responsible for any audio content 
+     captured, synthesized, broadcasted, or distributed by users through this tool. 
+     Users assume all legal liabilities for their usage.

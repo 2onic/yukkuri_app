@@ -158,9 +158,12 @@ yukkuri
 ## 版权与免责声明
 
 1. **AquesTalk1**：
-   - 本项目调用的语音合成动态库 `libAquesTalk.so` 属于 **[株式会社アクエスト (Aquest Corp.)](https://www.a-quest.com/)** 的版权财产；
+   - 本项目本身**不打包、不分发任何 AquesTalk 二进制专有动态库**；
+   - 语音合成引擎及动态库（`libAquesTalk.so` / `AquesTalk.dll`）属于 **[株式会社アクエスト (Aquest Corp.)](https://www.a-quest.com/)** 的版权财产，不受本项目 MIT 协议管辖；
    - 个人非商业用途请遵守官方使用条款。如需商业用途，请向 AQUEST 申请正式商业授权。
-2. **SenseVoice**：
-   - 语音识别模型属于阿里巴巴通义实验室开源项目，遵循 Apache-2.0 开源协议。
+2. **开源组件与模型**：
+   - SenseVoice、sherpa-onnx、Vosk 遵循 Apache-2.0 开源协议；
+   - Silero VAD、CustomTkinter 遵循 MIT 开源协议。
 3. **免责声明**：
-   - 本工具仅供个人娱乐、语音技术交流及二创研究使用，请勿用于侵犯他人合法权益或违规场景。
+   - 本工具仅供个人娱乐、语音技术交流及二创研究使用；
+   - 使用者通过本工具采集、合成与广播的任何音频内容，其合规性与法律责任由使用者自行承担，请勿用于侵犯他人合法权益或违法违规场景。
