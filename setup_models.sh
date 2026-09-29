@@ -14,13 +14,15 @@ show_help() {
     echo "  --sensevoice          仅下载 SenseVoice-Small 多语种端到端模型 (约 230MB)"
     echo "  --vad                 仅下载 Silero-VAD 语音活动检测器 (约 630KB)"
     echo "  --vosk [zh|ja|en|all] 下载 Vosk 离线模型 (默认: zh，可选 ja/en/all)"
-    echo "  --all                 下载所有模型 (VAD + SenseVoice + Vosk 全部语种)"
+    echo "  --aquestalk [zip|dir] 配置 AquesTalk1 多声线合成库 (支持传入 zip、目录或自动检测)"
+    echo "  --all                 配置所有模型 (VAD + SenseVoice + Vosk 全部语种 + AquesTalk)"
     echo "  -h, --help            显示本帮助信息"
     echo ""
     echo "示例:"
-    echo "  ./setup_models.sh                  # 推荐：下载默认组合"
+    echo "  ./setup_models.sh                  # 推荐：配置默认组合"
+    echo "  ./setup_models.sh --aquestalk      # 自动扫描或引导配置 AquesTalk 声线"
     echo "  ./setup_models.sh --vosk zh        # 仅下载 Vosk 中文模型"
-    echo "  ./setup_models.sh --all            # 全量下载"
+    echo "  ./setup_models.sh --all            # 全量配置"
 }
 
 # 辅助函数：解压 zip
@@ -121,6 +123,84 @@ download_vosk() {
     fi
 }
 
+setup_aquestalk() {
+    local src="$1"
+    local target_dir="libs/aquestalk/lib64"
+    mkdir -p "$target_dir"
+
+    echo ">>> 正在检查 AquesTalk1 多声线合成库..."
+    if [ -n "$src" ]; then
+        if [[ "$src" =~ ^https?:// ]]; then
+            echo ">>> 正在从指定 URL 下载 AquesTalk 压缩包: $src ..."
+            curl -SL -# -o aquestalk_tmp.zip "$src"
+            unzip_file aquestalk_tmp.zip "libs/aquestalk_tmp"
+            rm -f aquestalk_tmp.zip
+            python3 -c "from yukkuri.model_downloader import install_aquestalk_from_dir; install_aquestalk_from_dir('libs/aquestalk_tmp')"
+            rm -rf "libs/aquestalk_tmp"
+        elif [ -f "$src" ]; then
+            echo ">>> 正在从指定文件安装 AquesTalk 压缩包: $src ..."
+            python3 -c "from yukkuri.model_downloader import install_aquestalk_from_archive; install_aquestalk_from_archive('$src')"
+        elif [ -d "$src" ]; then
+            echo ">>> 正在从指定目录导入 AquesTalk: $src ..."
+            python3 -c "from yukkuri.model_downloader import install_aquestalk_from_dir; install_aquestalk_from_dir('$src')"
+        else
+            echo "[错误] 指定的 AquesTalk 文件或目录不存在: $src" >&2
+            return 1
+        fi
+    else
+        # 尝试自动检测本地已存在的安装包或解压目录
+        local result
+        result=$(python3 -c "
+from yukkuri.model_downloader import auto_detect_and_install_aquestalk, check_model_status
+status = check_model_status()
+if status['aquestalk']:
+    print('ALREADY_OK:' + ','.join(status['aquestalk_voices']))
+else:
+    res = auto_detect_and_install_aquestalk()
+    if res:
+        print('INSTALLED:' + ','.join(res))
+    else:
+        print('NOT_FOUND')
+" 2>/dev/null || echo "NOT_FOUND")
+
+        if [[ "$result" == ALREADY_OK:* ]]; then
+            local voices="${result#ALREADY_OK:}"
+            echo ">>> AquesTalk 多声线库已就绪 (可用声线: $voices)，跳过配置。"
+            return 0
+        elif [[ "$result" == INSTALLED:* ]]; then
+            local voices="${result#INSTALLED:}"
+            echo ">>> 成功自动发现并配置本地 AquesTalk 多声线库！(可用声线: $voices)"
+            return 0
+        fi
+
+        # 未自动找到，输出官方合规下载指引
+        echo "========================================================================"
+        echo "【提示】AquesTalk1 属于株式会社 AQUEST (Aquest Corp.) 专有版权软件。"
+        echo "根据官方授权协议，本项目不得在代码仓库中附带分发该动态库，需用户自行获取。"
+        echo ""
+        echo "获取与配置步骤："
+        echo "  1. 浏览器访问 AQUEST 官方下载页："
+        echo "     https://www.a-quest.com/download.html"
+        echo "  2. 找到 'AquesTalk1 Linux' (Ver.2.0.0)，点击 Download 下载 aqtk1_lnx_200.zip"
+        echo "  3. 将下载的 aqtk1_lnx_200.zip 放入当前目录，或运行："
+        echo "     ./setup_models.sh --aquestalk /路径/to/aqtk1_lnx_200.zip"
+        echo "     (若已解压，也可直接传入解压目录: ./setup_models.sh --aquestalk /路径/to/aqtk1_lnx)"
+        echo "========================================================================"
+        return 0
+    fi
+
+    # 验证最终安装声线
+    python3 -c "
+from yukkuri.config import AppConfig
+cfg = AppConfig()
+voices = cfg.get_available_voices()
+if voices:
+    print('>>> AquesTalk 声线配置成功，当前可用:', ', '.join(voices.keys()))
+else:
+    print('[警告] 未能识别到有效的 libAquesTalk.so 库文件')
+"
+}
+
 echo "=========================================="
 echo "  yukkuri_app - 模型一键配置工具"
 echo "=========================================="
@@ -128,6 +208,7 @@ echo "=========================================="
 if [ $# -eq 0 ]; then
     download_vad
     download_sensevoice
+    setup_aquestalk
     echo ""
     echo "=== 默认模型准备完成！==="
     echo "提示: 若需使用 Vosk 引擎，可执行: ./setup_models.sh --vosk zh"
@@ -158,10 +239,20 @@ while [ $# -gt 0 ]; do
             fi
             download_vosk "$VOSK_LANG"
             ;;
+        --aquestalk)
+            shift
+            AQ_SRC=""
+            if [ $# -gt 0 ] && [[ "$1" != --* ]]; then
+                AQ_SRC="$1"
+                shift
+            fi
+            setup_aquestalk "$AQ_SRC"
+            ;;
         --all)
             download_vad
             download_sensevoice
             download_vosk all
+            setup_aquestalk
             shift
             ;;
         *)

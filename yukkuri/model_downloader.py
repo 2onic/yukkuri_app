@@ -8,7 +8,7 @@ import shutil
 import tarfile
 import zipfile
 import urllib.request
-from typing import Callable, Optional, Dict
+from typing import Callable, Optional, Dict, List, Any
 
 VAD_URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx"
 SENSEVOICE_URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2"
@@ -21,11 +21,15 @@ VOSK_URLS = {
 def get_project_root() -> str:
     return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-def check_model_status(root: Optional[str] = None) -> Dict[str, bool]:
+def check_model_status(root: Optional[str] = None) -> Dict[str, object]:
     """检查各类模型在本地的存在状态"""
     root = root or get_project_root()
     sense_dir = os.path.join(root, "sensevoice")
     sense_orig = os.path.join(root, "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17")
+
+    from yukkuri.config import AppConfig
+    cfg = AppConfig(project_root=root)
+    avail_voices = cfg.get_available_voices()
 
     return {
         "vad": os.path.exists(os.path.join(root, "silero_vad.onnx")),
@@ -36,6 +40,9 @@ def check_model_status(root: Optional[str] = None) -> Dict[str, bool]:
         "vosk_zh": os.path.exists(os.path.join(root, "model_cn", "am", "final.mdl")) or os.path.exists(os.path.join(root, "model", "am", "final.mdl")),
         "vosk_ja": os.path.exists(os.path.join(root, "model_ja", "am", "final.mdl")),
         "vosk_en": os.path.exists(os.path.join(root, "model_en", "am", "final.mdl")),
+        "aquestalk": len(avail_voices) > 0,
+        "aquestalk_count": len(avail_voices),
+        "aquestalk_voices": list(avail_voices.keys()),
     }
 
 def download_file(
@@ -140,3 +147,103 @@ def download_vosk(
         os.rename(extracted_path, target_dir)
 
     return target_dir
+
+def install_aquestalk_from_archive(archive_path: str, root: Optional[str] = None) -> List[str]:
+    """从本地 zip 或 tar 压缩包解压安装 AquesTalk 多声线库"""
+    root = root or get_project_root()
+    target_lib64 = os.path.join(root, "libs", "aquestalk", "lib64")
+    os.makedirs(target_lib64, exist_ok=True)
+
+    if archive_path.endswith(".zip"):
+        with zipfile.ZipFile(archive_path, "r") as zf:
+            for member in zf.namelist():
+                if "lib64/" in member and member.endswith(".so"):
+                    parts = member.split("lib64/")
+                    if len(parts) > 1 and parts[1]:
+                        rel_path = parts[1]
+                        out_file = os.path.join(target_lib64, rel_path)
+                        os.makedirs(os.path.dirname(out_file), exist_ok=True)
+                        with zf.open(member) as src, open(out_file, "wb") as dst:
+                            shutil.copyfileobj(src, dst)
+    elif archive_path.endswith((".tar.gz", ".tgz", ".tar.bz2")):
+        with tarfile.open(archive_path, "r:*") as tf:
+            for member in tf.getmembers():
+                if "lib64/" in member.name and member.name.endswith(".so"):
+                    parts = member.name.split("lib64/")
+                    if len(parts) > 1 and parts[1]:
+                        rel_path = parts[1]
+                        out_file = os.path.join(target_lib64, rel_path)
+                        os.makedirs(os.path.dirname(out_file), exist_ok=True)
+                        f = tf.extractfile(member)
+                        if f:
+                            with open(out_file, "wb") as dst:
+                                shutil.copyfileobj(f, dst)
+
+    from yukkuri.config import AppConfig
+    cfg = AppConfig(project_root=root)
+    return list(cfg.get_available_voices().keys())
+
+def install_aquestalk_from_dir(src_dir: str, root: Optional[str] = None) -> List[str]:
+    """从本地解压好的目录导入并配置 AquesTalk 多声线库"""
+    root = root or get_project_root()
+    target_lib64 = os.path.join(root, "libs", "aquestalk", "lib64")
+    os.makedirs(target_lib64, exist_ok=True)
+
+    # 寻找 lib64 目录
+    lib64_dir = None
+    if os.path.isdir(os.path.join(src_dir, "lib64")):
+        lib64_dir = os.path.join(src_dir, "lib64")
+    else:
+        for child in os.listdir(src_dir):
+            candidate = os.path.join(src_dir, child, "lib64")
+            if os.path.isdir(candidate):
+                lib64_dir = candidate
+                break
+
+    if not lib64_dir:
+        lib64_dir = src_dir
+
+    for item in os.listdir(lib64_dir):
+        sub = os.path.join(lib64_dir, item)
+        if os.path.isdir(sub) and os.path.exists(os.path.join(sub, "libAquesTalk.so")):
+            target_sub = os.path.join(target_lib64, item)
+            os.makedirs(target_sub, exist_ok=True)
+            shutil.copy2(os.path.join(sub, "libAquesTalk.so"), os.path.join(target_sub, "libAquesTalk.so"))
+
+    from yukkuri.config import AppConfig
+    cfg = AppConfig(project_root=root)
+    return list(cfg.get_available_voices().keys())
+
+def auto_detect_and_install_aquestalk(root: Optional[str] = None) -> Optional[List[str]]:
+    """自动扫描用户环境中的 AquesTalk 安装包或已安装目录，并配置到项目 libs"""
+    root = root or get_project_root()
+    home = os.path.expanduser("~")
+
+    # 1. 扫描已知目录
+    dir_candidates = [
+        os.path.join(root, "aqtk1_lnx"),
+        os.path.join(home, "opt", "aqtk1_lnx_200"),
+        os.path.join(home, "opt", "aqtk1_lnx_200", "aqtk1_lnx"),
+        "/opt/aqtk1_lnx_200",
+        "/opt/aqtk1_lnx_200/aqtk1_lnx",
+    ]
+    for d in dir_candidates:
+        if os.path.isdir(d):
+            voices = install_aquestalk_from_dir(d, root=root)
+            if voices:
+                return voices
+
+    # 2. 扫描压缩包
+    archive_candidates = [
+        os.path.join(root, "aqtk1_lnx_200.zip"),
+        os.path.join(home, "Downloads", "aqtk1_lnx_200.zip"),
+        os.path.join(home, "下载", "aqtk1_lnx_200.zip"),
+    ]
+    for a in archive_candidates:
+        if os.path.isfile(a):
+            voices = install_aquestalk_from_archive(a, root=root)
+            if voices:
+                return voices
+
+    return None
+

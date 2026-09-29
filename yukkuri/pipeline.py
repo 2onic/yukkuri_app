@@ -46,6 +46,15 @@ class YukkuriPipeline:
         )
         self.stop_event = threading.Event()
 
+    def set_voice(self, voice: str) -> bool:
+        """动态切换当前油库里声线 (如 f1, f2, m1 等)"""
+        if hasattr(self.tts, "set_voice"):
+            success = self.tts.set_voice(voice)
+            if success:
+                self.config.voice = voice
+                return True
+        return False
+
     def process_segment(self, segment):
         """处理一段已完成断句的语音切片"""
         if len(segment) < self.config.sample_rate * self.config.vad_min_sample_duration:
@@ -142,7 +151,7 @@ class YukkuriPipeline:
         print("\n" + "=" * 65)
         print("  油库里实时语音转换器已就绪")
         print(f"  - 识别引擎: {self.config.engine} (语种: {self.config.lang})")
-        print(f"  - 合成引擎: AquesTalk1 (语速: {self.config.speed})")
+        print(f"  - 合成引擎: AquesTalk1 (声线: {self.config.voice}, 语速: {self.config.speed})")
         print(f"  - 音频输出: {self.config.target_sink}")
         if self.config.device is not None:
             print(f"  - 输入设备 ID: {self.config.device}")

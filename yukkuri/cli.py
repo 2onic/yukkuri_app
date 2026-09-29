@@ -37,6 +37,10 @@ def parse_args() -> argparse.Namespace:
         help="PipeWire 输出目标 Sink 名称 (默认: yukkuri_sink)"
     )
     parser.add_argument(
+        "--voice", type=str, default="f1", choices=["f1", "f2", "f3", "m1", "m2", "imd1", "jgr", "dvd", "r1"],
+        help="油库里合成声线: f1 (默认), f2, f3, m1, m2, imd1, jgr, dvd, r1"
+    )
+    parser.add_argument(
         "--speed", type=int, default=100,
         help="油库里语速 50~300 (默认: 100)"
     )
@@ -79,6 +83,7 @@ def main():
     config = AppConfig(
         engine=args.engine,
         lang=args.lang,
+        voice=args.voice,
         speed=args.speed,
         target_sink=args.target,
         device=args.device,
@@ -86,15 +91,19 @@ def main():
         enable_dynamic_mic=not args.no_dynamic_mic,
     )
 
-    # 1. 查找 AquesTalk C 动态库
-    so_path = config.find_aquestalk_library()
+    # 1. 查找并初始化 AquesTalk 多声线合成引擎
+    so_path = config.find_aquestalk_library(config.voice)
     if not so_path:
-        print("[错误] 未找到 libAquesTalk.so 动态库！", file=sys.stderr)
-        print("请确认项目根目录下存在 libAquesTalk.so 文件。", file=sys.stderr)
+        print(f"[错误] 未找到声线 '{config.voice}' 对应的 libAquesTalk.so 动态库！", file=sys.stderr)
+        print("请运行以下命令配置 AquesTalk 语音库：", file=sys.stderr)
+        print("  ./setup_models.sh --aquestalk", file=sys.stderr)
         return 1
 
     try:
-        tts_engine = AquesTalk1Engine(so_path)
+        tts_engine = AquesTalk1Engine(
+            voice=config.voice,
+            voice_resolver=config.find_aquestalk_library
+        )
     except Exception as e:
         print(f"[错误] 初始化 AquesTalk 失败: {e}", file=sys.stderr)
         return 1

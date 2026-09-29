@@ -2,7 +2,11 @@
 __pycache__/
 *.py[cod]
 *$py.class
-*.so.1
+*.so
+*.so.*
+libAquesTalk*.so
+libs/
+aqtk*/
 *.egg-info/
 build/
 dist/

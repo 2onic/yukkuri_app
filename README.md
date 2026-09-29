@@ -14,6 +14,9 @@
 
 ## 核心特性
 
+- **多声线自由切换 (Multi-Voice Switch)**：
+  - 支持 **f1**、**f2**、**f3**、**m1/m2**、**imd1**、**jgr**、**dvd**、**r1**共 9 种声线；
+  - GUI 界面支持运行中**实时热切换**，命令行支持 `--voice` 选项。
 - **经典油库里空耳调教 (Polyglot G2P)**：
   - **中文**：自动将汉字转为拼音并映射为油库里假名音标（如 *“你好”* -> `にー/はお`，*“我是油库里”* -> `うぉ/しー/ゆっくり`）；
   - **英文**：常用词外来语化 + 音节音译 + 字母拼读（如 *“Hello world”* -> `へろー/わーるど`，*“CPU”* -> `しーぴーゆー`）；
@@ -51,22 +54,29 @@ cd yukkuri_app
 pip install -e .
 ```
 
-### 2. 下载语音模型
+### 2. 下载语音模型与配置 AquesTalk 声线库
 
-你可以通过命令行脚本下载，或者在启动 GUI 界面后点击【语音模型管理与下载】一键下载：
+你可以通过命令行脚本配置，或者在启动 GUI 界面后点击【语音模型与声线库管理】一键导入：
 
 ```bash
 chmod +x setup_models.sh
 
-# 默认推荐：下载 Silero-VAD + SenseVoice-Small（约 230MB）
+# 推荐一键配置：下载 Silero-VAD + SenseVoice-Small 并自动检测配置 AquesTalk
 ./setup_models.sh
+
+# 配置 AquesTalk 多声线库 (支持传入下载的 zip 包、解压目录或自动扫描)
+./setup_models.sh --aquestalk [aqtk1_lnx_200.zip 或解压目录]
 
 # 可选：下载 Vosk 离线模型 (支持 zh / ja / en)
 ./setup_models.sh --vosk zh
 
-# 可选：全量下载所有模型
+# 可选：全量配置所有模型
 ./setup_models.sh --all
 ```
+
+> **注意（AquesTalk 专有授权）**：
+> `libAquesTalk.so` 属于 **[株式会社アクエスト (Aquest Corp.)](https://www.a-quest.com/)** 的专有财产，本项目不自带打包。
+> 请前往 [AQUEST 官方下载页](https://www.a-quest.com/download.html) 下载 **AquesTalk1 Linux** (aqtk1_lnx_200.zip)，然后通过 `./setup_models.sh --aquestalk` 或 GUI 向导导入即可解锁全套 9 种声线。
 
 ### 3. 运行转换器
 
@@ -109,6 +119,7 @@ yukkuri
 | 参数 | 默认值 | 作用说明 |
 | :--- | :--- | :--- |
 | `--engine` | `sensevoice` | 识别引擎：`sensevoice`（默认高精度端到端）或 `vosk`（轻量传统） |
+| `--voice` | `f1` | 油库里声线：`f1`, `f2`, `f3`, `m1`, `m2`, `imd1`, `jgr`, `dvd`, `r1` |
 | `--speed` | `100` | 油库里说话语速（推荐范围: `70` ~ `160`） |
 | `--target` | `yukkuri_sink` | PipeWire 推流目标 sink 名称 |
 | `--device` | 系统默认 | 指定输入的实体麦克风设备 ID |
@@ -120,6 +131,12 @@ yukkuri
 ```bash
 # 查看所有输入设备编号
 ./run.sh --list-devices
+
+# 使用女声2 (f2) 运行
+./run.sh --voice f2
+
+# 使用男声1 (m1) 运行
+./run.sh --voice m1
 
 # 指定麦克风设备 ID（例如 14）并调快语速至 120
 ./run.sh --device 14 --speed 120

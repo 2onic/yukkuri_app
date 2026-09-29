@@ -46,8 +46,9 @@ class YukkuriApp(ctk.CTk):
         # 构建界面
         self._build_ui()
 
-        # 刷新设备列表
+        # 刷新设备与声线列表
         self._refresh_devices()
+        self._refresh_voices()
 
         # 注册定时消费队列与关闭事件
         self.after(50, self._process_queue)
@@ -110,7 +111,7 @@ class YukkuriApp(ctk.CTk):
         # 模型管理与下载按钮
         self.btn_models = ctk.CTkButton(
             left_panel,
-            text="语音模型管理与下载",
+            text="语音模型与声线库管理",
             height=34,
             font=ctk.CTkFont(size=13, weight="bold"),
             fg_color="#37474F",
@@ -137,6 +138,12 @@ class YukkuriApp(ctk.CTk):
         )
         self.lang_seg.set("中文 (zh)")
         self.lang_seg.pack(fill="x", padx=12, pady=(0, 12))
+
+        # 分组 2: 声线配置
+        voice_card = self._create_card(left_panel, "油库里声线选择")
+        ctk.CTkLabel(voice_card, text="当前合成声线 (支持实时热切换):", font=ctk.CTkFont(size=13, weight="bold")).pack(anchor="w", padx=12, pady=(6, 2))
+        self.voice_menu = ctk.CTkOptionMenu(voice_card, values=["正在加载声线..."], command=self._on_voice_changed)
+        self.voice_menu.pack(fill="x", padx=12, pady=(0, 12))
 
         # 分组 2: 硬件与麦克风设备
         dev_card = self._create_card(left_panel, "输入麦克风选择")
@@ -257,6 +264,42 @@ class YukkuriApp(ctk.CTk):
             self.device_menu.configure(values=labels)
             self.device_menu.set(labels[0])
 
+    def _refresh_voices(self):
+        """刷新并加载可用的 AquesTalk 声线列表"""
+        from yukkuri.config import AppConfig, AQUESTALK_VOICES
+        config = AppConfig()
+        avail = config.get_available_voices()
+
+        options = []
+        if avail:
+            for k, v in avail.items():
+                options.append(f"{k}: {v}")
+        else:
+            options = ["未检测到声线 (请点击上方模型管理导入)"]
+
+        self.voice_menu.configure(values=options)
+        if options:
+            current = self.voice_menu.get()
+            cur_key = current.split(":")[0].strip() if ":" in current else ""
+            match = [opt for opt in options if opt.startswith(f"{cur_key}:")]
+            if match:
+                self.voice_menu.set(match[0])
+            else:
+                self.voice_menu.set(options[0])
+
+    def _on_voice_changed(self, choice: str):
+        if ":" not in choice:
+            return
+        voice_key = choice.split(":")[0].strip()
+        if self.pipeline and self.is_running:
+            ok = self.pipeline.set_voice(voice_key)
+            if ok:
+                self._append_log("系统", f"已实时热切换声线为: {choice}")
+            else:
+                self._append_log("系统", f"切换声线失败: 未找到 {voice_key} 库")
+        else:
+            self._append_log("系统", f"预设声线已选定: {choice}")
+
     def _on_speed_changed(self, value):
         spd = int(value)
         self.speed_label.configure(text=f"油库里语速: {spd}%")
@@ -317,9 +360,13 @@ class YukkuriApp(ctk.CTk):
         vad_silence = self.vad_slider.get() / 1000.0
         enable_dyn_mic = bool(self.switch_dyn_mic.get())
 
+        selected_voice_opt = self.voice_menu.get()
+        selected_voice = selected_voice_opt.split(":")[0].strip() if ":" in selected_voice_opt else "f1"
+
         config = AppConfig(
             engine=engine_str,
             lang=lang_str,
+            voice=selected_voice,
             speed=speed,
             device=device_id,
             vad_min_silence=vad_silence,
@@ -332,13 +379,16 @@ class YukkuriApp(ctk.CTk):
 
         def worker():
             try:
-                # 查找动态库
-                so_path = config.find_aquestalk_library()
+                # 查找并初始化 AquesTalk 多声线合成引擎
+                so_path = config.find_aquestalk_library(config.voice)
                 if not so_path:
-                    self.msg_queue.put(("error", "未找到 libAquesTalk.so 动态库！"))
+                    self.msg_queue.put(("error_model", f"未找到所选声线 ({config.voice}) 库文件，已自动为你打开模型管理器，请点击导入/配置。"))
                     return
 
-                tts_engine = AquesTalk1Engine(so_path)
+                tts_engine = AquesTalk1Engine(
+                    voice=config.voice,
+                    voice_resolver=config.find_aquestalk_library
+                )
                 vad_detector = None
 
                 if config.engine == "sensevoice":
