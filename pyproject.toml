@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yukkuri-app"
+version = "0.2.0"
+description = "Linux PipeWire Real-time Voice Changer to classic Yukkuri (AquesTalk1) audio"
+readme = "README.md"
+authors = [
+    { name = "2onic" }
+]
+license = { text = "MIT" }
+requires-python = ">=3.8"
+dependencies = [
+    "sounddevice>=0.4.6",
+    "numpy>=1.20.0",
+    "pykakasi>=2.3.0",
+    "pypinyin>=0.50.0",
+    "sherpa-onnx>=1.10.0",
+    "vosk>=0.3.45",
+]
+
+[project.scripts]
+yukkuri = "yukkuri.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["yukkuri*"]
+exclude = ["tests*", "model*"]

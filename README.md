@@ -47,21 +47,11 @@ flowchart LR
 git clone git@github.com:2onic/yukkuri_app.git
 cd yukkuri_app
 
-pip install -r requirements.txt
+# 安装依赖并注册全局 yukkuri 命令
+pip install -e .
 ```
 
-### 2. 配置 PipeWire 虚拟麦克风
-
-运行项目附带的配置脚本，会自动在 `~/.config/pipewire/pipewire.conf.d/` 创建虚拟声卡回环模块并重启 PipeWire：
-
-```bash
-chmod +x setup_virtual_mic.sh
-./setup_virtual_mic.sh
-```
-
-> **效果**：系统将自动生成 `yukkuri_sink`（音频接收点）和 `yukkuri_source`（显示为 `Yukkuri Virtual Mic` 的麦克风设备）。
-
-### 3. 一键下载语音模型
+### 2. 一键下载语音模型
 
 运行脚本下载 SenseVoice-Small ONNX 量化模型（约 230MB）及 Silero-VAD 检测器（约 630KB）：
 
@@ -70,20 +60,27 @@ chmod +x setup_models.sh
 ./setup_models.sh
 ```
 
-### 4. 运行app
+### 3. 运行转换器
+
+程序支持自动通过 `pactl` 动态创建与清理虚拟麦克风，无需修改系统声卡配置：
 
 ```bash
-chmod +x run.sh yukkuri_bridge.py
+# 直接使用全局命令启动
+yukkuri
+
+# 或者通过启动脚本运行
 ./run.sh
 ```
 
 现在对着麦克风说话，并在 Discord / QQ / OBS 中将音频输入设备选择为 **`Yukkuri Virtual Mic`** 即可。
 
+> **提示（静态声卡配置）**：如果你希望在系统启动时常驻虚拟麦克风设备，也可以运行可选脚本 `./setup_virtual_mic.sh` 写入 PipeWire 静态配置文件。
+
 ---
 
 ## 进阶参数说明
 
-`./run.sh`（或 `python yukkuri_bridge.py`）支持以下自定义命令行参数：
+`yukkuri` 命令与 `./run.sh` 支持以下自定义命令行参数：
 
 | 参数 | 默认值 | 作用说明 |
 | :--- | :--- | :--- |

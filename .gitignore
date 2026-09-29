@@ -1,8 +1,11 @@
-# Python 字节码与缓存
+# Python 字节码与构建缓存
 __pycache__/
 *.py[cod]
 *$py.class
 *.so.1
+*.egg-info/
+build/
+dist/
 
 # AI 模型文件
 sensevoice

@@ -1,14 +1,29 @@
 #!/usr/bin/env bash
 set -e
 
-# 默认优先使用已配置好依赖的 yukkuri conda 环境
-CONDA_PYTHON="/home/colimy/miniforge3/envs/yukkuri/bin/python"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-if [ -f "$CONDA_PYTHON" ]; then
-    PYTHON_CMD="$CONDA_PYTHON"
+# 智能探测可用 Python 解释器
+# 1. 优先使用环境变量指定的 PYTHON_CMD
+if [ -n "$PYTHON_CMD" ] && [ -x "$PYTHON_CMD" ]; then
+    RESOLVED_PYTHON="$PYTHON_CMD"
+# 2. 如果当前终端已经激活了包含依赖的环境
+elif [ -n "$CONDA_PREFIX" ] && [ -x "$CONDA_PREFIX/bin/python" ]; then
+    RESOLVED_PYTHON="$CONDA_PREFIX/bin/python"
+# 3. 搜索常见 Conda 虚拟环境路径
+elif [ -x "$HOME/miniforge3/envs/yukkuri/bin/python" ]; then
+    RESOLVED_PYTHON="$HOME/miniforge3/envs/yukkuri/bin/python"
+elif [ -x "$HOME/miniconda3/envs/yukkuri/bin/python" ]; then
+    RESOLVED_PYTHON="$HOME/miniconda3/envs/yukkuri/bin/python"
+elif [ -x "$HOME/anaconda3/envs/yukkuri/bin/python" ]; then
+    RESOLVED_PYTHON="$HOME/anaconda3/envs/yukkuri/bin/python"
+# 4. 回退到系统 python3
+elif command -v python3 >/dev/null 2>&1; then
+    RESOLVED_PYTHON="python3"
 else
-    PYTHON_CMD="python3"
+    echo "[错误] 未找到可用的 Python 解释器！" >&2
+    exit 1
 fi
 
-exec "$PYTHON_CMD" "$SCRIPT_DIR/yukkuri_bridge.py" "$@"
+export PYTHONPATH="$SCRIPT_DIR:${PYTHONPATH:-}"
+exec "$RESOLVED_PYTHON" -m yukkuri.cli "$@"
