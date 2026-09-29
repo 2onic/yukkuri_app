@@ -1,0 +1,36 @@
+# Python 字节码与缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.so.1
+
+# AI 模型文件 (文件体积过大，请使用 ./setup_models.sh 自动下载)
+sensevoice
+sensevoice/
+sherpa-onnx-*/
+model/
+model_cn/
+model_en/
+model_ja
+*.onnx
+*.zip
+*.tar.gz
+*.tar.bz2
+
+# 虚拟环境
+.venv/
+venv/
+ENV/
+env/
+
+# IDE 与操作系统配置
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+
+# 临时测试音频与日志
+*.wav
+*.mp3
+*.log
