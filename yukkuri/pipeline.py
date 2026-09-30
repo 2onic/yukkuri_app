@@ -45,7 +45,8 @@ class YukkuriPipeline:
         self.mic_stream = MicrophoneStream(
             sample_rate=config.sample_rate,
             channels=config.channels,
-            device=config.device
+            device=config.device,
+            gain=getattr(config, "mic_gain", 1.0),
         )
         self.stop_event = threading.Event()
 

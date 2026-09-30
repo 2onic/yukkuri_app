@@ -33,6 +33,7 @@ class AppConfig:
     # 音频参数
     sample_rate: int = 16000
     channels: int = 1
+    mic_gain: float = 1.0               # 麦克风输入增益倍数 (默认 1.0)
 
     # VAD 参数
     vad_min_silence: float = 0.35       # 静音断句阈值 (秒)
