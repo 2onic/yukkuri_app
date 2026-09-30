@@ -7,7 +7,7 @@ from unittest.mock import patch, MagicMock
 import numpy as np
 
 from yukkuri.audio.capture import MicrophoneStream
-from yukkuri.gui.devices import find_default_real_input_device
+from yukkuri.gui.devices import get_input_devices, is_virtual_device
 
 class TestAudioCapture(unittest.TestCase):
     def test_resolve_input_parameters_direct_support(self):
@@ -54,19 +54,27 @@ class TestAudioCapture(unittest.TestCase):
         # 实时音量 level 应该大于 0
         self.assertGreater(stream.current_level, 0.0)
 
-    def test_find_default_real_input_device_filters_virtual(self):
-        """测试智能避开虚拟声卡并选择物理麦克风"""
+    def test_is_virtual_device(self):
+        """测试虚拟声卡关键字识别"""
+        self.assertTrue(is_virtual_device("yukkuri_sink.monitor"))
+        self.assertTrue(is_virtual_device("CABLE Output"))
+        self.assertTrue(is_virtual_device("Null Output"))
+        self.assertFalse(is_virtual_device("Realtek High Definition Audio"))
+        self.assertFalse(is_virtual_device("USB Microphone"))
+
+    def test_get_input_devices_tags_virtual(self):
+        """测试设备列表中虚拟声卡被添加 [虚拟声卡] 标签，首项为系统默认"""
         mock_devices = [
-            {"name": "yukkuri_sink.monitor", "max_input_channels": 2},
-            {"name": "CABLE Output (VB-Audio)", "max_input_channels": 2},
             {"name": "Built-in Microphone", "max_input_channels": 2},
-            {"name": "USB Headset Mic", "max_input_channels": 1},
+            {"name": "yukkuri_sink.monitor", "max_input_channels": 2},
+            {"name": "CABLE Output", "max_input_channels": 2},
         ]
         with patch("sounddevice.query_devices", return_value=mock_devices):
-            with patch("sounddevice.default.device", [0, 0]):
-                best_id = find_default_real_input_device()
-                # 应选 Built-in Microphone 或 USB Headset Mic (id 2 或 3)，绝不可选 0 或 1
-                self.assertIn(best_id, [2, 3])
+            devices = get_input_devices()
+            self.assertEqual(devices[0], (None, "系统默认 (Default)"))
+            self.assertEqual(devices[1], (0, "[0] Built-in Microphone"))
+            self.assertIn("[虚拟声卡]", devices[2][1])
+            self.assertIn("[虚拟声卡]", devices[3][1])
 
 if __name__ == "__main__":
     unittest.main()

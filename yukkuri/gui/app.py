@@ -19,7 +19,7 @@ from yukkuri.asr.vosk import VoskASR
 from yukkuri.audio.vad import SileroVAD
 from yukkuri.audio.virtual_mic import VirtualMicManager
 from yukkuri.pipeline import YukkuriPipeline
-from yukkuri.gui.devices import get_input_devices, find_default_real_input_device
+from yukkuri.gui.devices import get_input_devices
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
@@ -152,22 +152,11 @@ class YukkuriApp(ctk.CTk):
         dev_row.pack(fill="x", padx=12, pady=(6, 12))
         dev_row.grid_columnconfigure(0, weight=1)
 
-        self.device_menu = ctk.CTkOptionMenu(dev_row, values=["正在获取设备..."], command=self._on_device_changed)
+        self.device_menu = ctk.CTkOptionMenu(dev_row, values=["正在获取设备..."])
         self.device_menu.grid(row=0, column=0, sticky="ew", padx=(0, 8))
 
         btn_refresh = ctk.CTkButton(dev_row, text="刷新", width=48, command=self._refresh_devices)
         btn_refresh.grid(row=0, column=1)
-
-        self.lbl_input_warning = ctk.CTkLabel(
-            dev_card,
-            text="",
-            font=ctk.CTkFont(size=11),
-            text_color="#FFA726",
-            wraplength=340,
-            justify="left"
-        )
-        self.lbl_input_warning.pack(fill="x", padx=12, pady=(0, 4))
-        self.lbl_input_warning.pack_forget()
 
         # 分组 3: 语速与端点灵敏度
         tune_card = self._create_card(left_panel, "声音与断句调优")
@@ -274,19 +263,8 @@ class YukkuriApp(ctk.CTk):
         ).pack(anchor="w", padx=12, pady=(10, 4))
         return card
 
-    def _on_device_changed(self, choice: str):
-        self._check_selected_input_device(choice)
-
-    def _check_selected_input_device(self, choice: str):
-        lower = choice.lower()
-        if "虚拟" in choice or "cable" in lower or "vb-audio" in lower or "null" in lower:
-            self.lbl_input_warning.configure(text="⚠️ 提示: 检测到选中了虚拟声卡设备，请切换为您电脑的真实麦克风！")
-            self.lbl_input_warning.pack(fill="x", padx=12, pady=(0, 4))
-        else:
-            self.lbl_input_warning.pack_forget()
-
     def _refresh_devices(self):
-        """刷新并加载系统麦克风输入列表"""
+        """刷新并加载系统麦克风输入列表，默认选定系统默认设备"""
         devices = get_input_devices()
         self.device_map.clear()
         labels = []
@@ -296,23 +274,7 @@ class YukkuriApp(ctk.CTk):
 
         if labels:
             self.device_menu.configure(values=labels)
-
-            # 智能避开虚拟声卡，优选物理麦克风
-            real_mic_id = find_default_real_input_device()
-            matched_label = None
-            if real_mic_id is not None:
-                for label, dev_id in self.device_map.items():
-                    if dev_id == real_mic_id:
-                        matched_label = label
-                        break
-
-            if matched_label:
-                self.device_menu.set(matched_label)
-                self._check_selected_input_device(matched_label)
-                self._append_log("系统", f"已自动避开虚拟声卡，为您选定实体麦克风: {matched_label}")
-            else:
-                self.device_menu.set(labels[0])
-                self._check_selected_input_device(labels[0])
+            self.device_menu.set(labels[0])
 
     def _refresh_voices(self):
         """刷新并加载可用的 AquesTalk 声线列表"""
@@ -539,7 +501,7 @@ class YukkuriApp(ctk.CTk):
                 self.is_running = True
                 self.btn_toggle.configure(state="normal", text="⏹ 停止转换器", fg_color="#E04747", hover_color="#C62828")
                 self.status_indicator.configure(text="● 正在运行 (已监听)", text_color="#66BB6A")
-                self._append_log("系统", "转换器启动成功！请在开黑软件中将麦克风选择为 [Yukkuri Virtual Mic]")
+                self._append_log("系统", "转换器启动成功！请在软件中将麦克风选择为 [Yukkuri Virtual Mic]")
 
             elif msg_type == "stopped":
                 self.is_running = False

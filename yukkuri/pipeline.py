@@ -117,7 +117,7 @@ class YukkuriPipeline:
                 print(f"[UI 回调异常]: {e}", file=sys.stderr)
 
     def speak_text(self, text: str):
-        """手动输入文本进行合成与推流 (快捷试听/开黑播报)"""
+        """手动输入文本进行合成与推流"""
         if not text.strip():
             return
 
