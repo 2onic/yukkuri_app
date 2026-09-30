@@ -1,14 +1,17 @@
 """
-PipeWire / PulseAudio 虚拟麦克风动态生命周期管理器
-支持运行时零重启动态加载与退出时自动清理
+虚拟麦克风动态生命周期管理器，支持平台物理隔离：
+- Linux: 基于 PipeWire / PulseAudio (pactl load-module module-null-sink & module-remap-source)
+- Windows: 基于 VB-Audio Virtual Cable (CABLE Input / CABLE Output) 驱动状态检测与免驱动引导
 """
 
+import sys
 import subprocess
 import shutil
 from typing import List, Optional
 
-class VirtualMicManager:
-    """管理临时虚拟声卡节点 (yukkuri_sink -> yukkuri_source)"""
+
+class LinuxPipeWireMicManager:
+    """Linux 专有虚拟声卡管理：动态加载/卸载 yukkuri_sink 与 yukkuri_source"""
 
     def __init__(self, sink_name: str = "yukkuri_sink", source_name: str = "yukkuri_source"):
         self.sink_name = sink_name
@@ -38,7 +41,6 @@ class VirtualMicManager:
     def setup(self) -> bool:
         """若系统中尚未存在该虚拟节点，则动态创建"""
         if self.sink_exists():
-            # 已经存在（例如用户配置了 99-yukkuri-mic.conf），无需重复创建
             self._is_active = True
             return True
 
@@ -87,3 +89,70 @@ class VirtualMicManager:
         print(f"[声卡管理] 已清理动态虚拟声卡节点。")
         self._loaded_modules.clear()
         self._is_active = False
+
+
+class WindowsVBCableManager:
+    """Windows 专有虚拟声卡管理：检测 VB-Audio Virtual Cable (CABLE Input / Output) 状态"""
+
+    def __init__(self):
+        self._is_active = False
+
+    @staticmethod
+    def is_driver_installed() -> bool:
+        """检查系统中是否已安装 VB-Audio Virtual Cable 驱动"""
+        try:
+            import sounddevice as sd
+            devices = sd.query_devices()
+            has_input = False
+            has_output = False
+            for d in devices:
+                name = d.get("name", "").lower()
+                if "cable input" in name and d.get("max_output_channels", 0) > 0:
+                    has_input = True
+                if "cable output" in name and d.get("max_input_channels", 0) > 0:
+                    has_output = True
+            return has_input and has_output
+        except Exception:
+            return False
+
+    def setup(self) -> bool:
+        if self.is_driver_installed():
+            self._is_active = True
+            print("[声卡管理] 已检测到 VB-Audio Virtual Cable 驱动就绪。")
+            return True
+        else:
+            print("[声卡管理 提示] 未检测到 VB-Audio Virtual Cable！", file=sys.stderr)
+            print("  请访问 https://vb-audio.com/Cable/ 下载并安装 VB-CABLE 虚拟声卡驱动。", file=sys.stderr)
+            print("  安装后请将游戏/开黑软件的麦克风设置为 [CABLE Output]。", file=sys.stderr)
+            return False
+
+    def cleanup(self):
+        self._is_active = False
+
+
+class VirtualMicManager:
+    """
+    通用虚拟声卡管理器门面 (Facade)：
+    根据运行环境自动分派对应平台的虚拟声卡驱动管理实现。
+    """
+
+    def __init__(self, sink_name: str = "yukkuri_sink", source_name: str = "yukkuri_source"):
+        if sys.platform == "win32":
+            self._impl = WindowsVBCableManager()
+        else:
+            self._impl = LinuxPipeWireMicManager(sink_name=sink_name, source_name=source_name)
+
+    @property
+    def impl(self):
+        return self._impl
+
+    def setup(self) -> bool:
+        return self._impl.setup()
+
+    def cleanup(self):
+        self._impl.cleanup()
+
+    def sink_exists(self) -> bool:
+        if hasattr(self._impl, "sink_exists"):
+            return self._impl.sink_exists()
+        return True

@@ -29,6 +29,8 @@ class AppConfig:
     source_name: str = "yukkuri_source" # 虚拟输入 Source 名称 (供录音或回放监听捕获)
     enable_loopback: bool = False       # 是否开启自身回放监听 (耳机/扬声器实时听到油库里语音)
     device: Optional[int] = None        # 麦克风输入设备 ID (None 为系统默认)
+    output_device: Optional[int] = None # Windows 目标播放设备 ID (默认自动寻找 CABLE Input)
+    monitor_device: Optional[int] = None # Windows 耳机监听设备 ID (默认使用系统默认输出)
 
     # 音频参数
     sample_rate: int = 16000
@@ -61,57 +63,66 @@ class AppConfig:
 
     def find_aquestalk_library(self, voice: Optional[str] = None) -> Optional[str]:
         """
-        按声线与优先级搜索对应的 libAquesTalk.so 动态库
+        按声线与平台搜索对应的 AquesTalk 动态库 (Linux .so / Windows .dll)
         :param voice: 声线名称 (如 "f1", "f2", "m1" 等)，若未指定则使用 self.voice
         """
+        import sys
         target_voice = (voice or self.voice or "f1").lower()
-        candidates = []
+        is_win = sys.platform == "win32"
 
-        # 1. 自定义指定目录
-        if self.custom_aquestalk_dir and os.path.exists(self.custom_aquestalk_dir):
-            c_dir = self.custom_aquestalk_dir
-            candidates.extend([
-                os.path.join(c_dir, "lib64", target_voice, "libAquesTalk.so"),
-                os.path.join(c_dir, target_voice, "libAquesTalk.so"),
-                os.path.join(c_dir, f"libAquesTalk-{target_voice}.so"),
-                os.path.join(c_dir, f"libAquesTalk_{target_voice}.so"),
-                os.path.join(c_dir, "libAquesTalk.so"),
-            ])
-
-        # 2. 项目内 libs / aquestalk 目录
-        candidates.extend([
-            os.path.join(self.project_root, "libs", "aquestalk", "lib64", target_voice, "libAquesTalk.so"),
-            os.path.join(self.project_root, "libs", "aquestalk", target_voice, "libAquesTalk.so"),
-            os.path.join(self.project_root, "libs", "lib64", target_voice, "libAquesTalk.so"),
-            os.path.join(self.project_root, "libs", target_voice, "libAquesTalk.so"),
-            os.path.join(self.project_root, f"libAquesTalk-{target_voice}.so"),
-            os.path.join(self.project_root, f"libAquesTalk_{target_voice}.so"),
-            os.path.join(self.project_root, "libs", f"libAquesTalk-{target_voice}.so"),
-        ])
-
-        # 3. 用户常用安装或缓存路径 (~/.cache/yukkuri/aquestalk 或 ~/opt)
-        home = os.path.expanduser("~")
-        candidates.extend([
-            os.path.join(home, ".cache", "yukkuri", "aquestalk", "lib64", target_voice, "libAquesTalk.so"),
-            os.path.join(home, ".cache", "yukkuri", "aquestalk", target_voice, "libAquesTalk.so"),
-            os.path.join(home, "opt", "aqtk1_lnx_200", "aqtk1_lnx", "lib64", target_voice, "libAquesTalk.so"),
-            os.path.join("/opt", "aqtk1_lnx_200", "aqtk1_lnx", "lib64", target_voice, "libAquesTalk.so"),
-        ])
-
-        # 4. 回退：如果是 f1 或单库模式，检查根目录动态库
-        if target_voice == "f1":
-            candidates.extend([
-                os.path.join(self.project_root, "libAquesTalk.so"),
-                os.path.join(self.project_root, "libAquesTalk.so.1"),
-                os.path.join(self.project_root, "libs", "libAquesTalk.so"),
-                os.path.join(self.project_root, "libs", "aquestalk", "libAquesTalk.so"),
+        if is_win:
+            primary_names = [
+                f"AquesTalk-{target_voice}.dll",
+                f"AquesTalk_{target_voice}.dll",
+                "AquesTalk.dll",
+                "AquesTalk2.dll",
+            ]
+        else:
+            primary_names = [
+                f"libAquesTalk-{target_voice}.so",
+                f"libAquesTalk_{target_voice}.so",
                 "libAquesTalk.so",
                 "libAquesTalk.so.1",
+            ]
+
+        search_dirs = []
+        if self.custom_aquestalk_dir and os.path.exists(self.custom_aquestalk_dir):
+            search_dirs.extend([
+                os.path.join(self.custom_aquestalk_dir, "lib64", target_voice),
+                os.path.join(self.custom_aquestalk_dir, target_voice),
+                os.path.join(self.custom_aquestalk_dir, "lib64"),
+                self.custom_aquestalk_dir,
             ])
 
-        for path in candidates:
-            if os.path.exists(path):
-                return os.path.abspath(path)
+        search_dirs.extend([
+            os.path.join(self.project_root, "libs", "aquestalk", "lib64", target_voice),
+            os.path.join(self.project_root, "libs", "aquestalk", target_voice),
+            os.path.join(self.project_root, "libs", "lib64", target_voice),
+            os.path.join(self.project_root, "libs", target_voice),
+            os.path.join(self.project_root, "libs", "aquestalk"),
+            os.path.join(self.project_root, "libs"),
+        ])
+
+        home = os.path.expanduser("~")
+        search_dirs.extend([
+            os.path.join(home, ".cache", "yukkuri", "aquestalk", "lib64", target_voice),
+            os.path.join(home, ".cache", "yukkuri", "aquestalk", target_voice),
+            os.path.join(home, ".cache", "yukkuri", "aquestalk"),
+            os.path.join(home, "opt", "aqtk1_lnx_200", "aqtk1_lnx", "lib64", target_voice),
+            os.path.join("/opt", "aqtk1_lnx_200", "aqtk1_lnx", "lib64", target_voice),
+        ])
+
+        if target_voice == "f1":
+            search_dirs.append(self.project_root)
+
+        for d in search_dirs:
+            if not os.path.exists(d):
+                continue
+            for fn in primary_names:
+                p = os.path.join(d, fn)
+                if os.path.exists(p):
+                    return os.path.abspath(p)
+
         return None
 
     def get_available_voices(self) -> Dict[str, str]:

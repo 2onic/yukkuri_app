@@ -101,10 +101,10 @@ class AquesTalkImportDialog(ctk.CTkToplevel):
         )
         btn_auto.pack(fill="x", padx=16, pady=6)
 
-        # 选项 3: 手动选择 zip
+        # 选项 3: 手动选择压缩包或动态库
         btn_zip = ctk.CTkButton(
             body,
-            text="📦 选择已下载的 zip 压缩包 (aqtk1_lnx_200.zip)",
+            text="📦 选择已下载的压缩包或动态库 (zip / tar / dll / so)",
             height=36,
             font=ctk.CTkFont(size=13),
             fg_color="#2E7D32",
@@ -136,8 +136,8 @@ class AquesTalkImportDialog(ctk.CTkToplevel):
     def _on_select_zip(self):
         file_path = fd.askopenfilename(
             parent=self,
-            title="选择 AquesTalk1 Linux 压缩包",
-            filetypes=[("AquesTalk 压缩包", "*.zip *.tgz *.tar.gz"), ("所有文件", "*.*")]
+            title="选择 AquesTalk1 压缩包或动态库文件",
+            filetypes=[("AquesTalk 压缩包或库文件", "*.zip *.tgz *.tar.gz *.dll *.so"), ("所有文件", "*.*")]
         )
         if file_path:
             try:
@@ -146,7 +146,7 @@ class AquesTalkImportDialog(ctk.CTkToplevel):
                     mb.showinfo("导入成功", f"AquesTalk1 多声线库解压配置成功！\n可用声线: {', '.join(voices)}")
                     self._finish_import()
                 else:
-                    mb.showerror("错误", "所选压缩包中未检测到 lib64 动态库，请确认下载的是 AquesTalk1 Linux 版本。")
+                    mb.showerror("错误", "所选文件中未检测到有效的 AquesTalk 动态库 (.so 或 .dll)。")
             except Exception as e:
                 mb.showerror("解压异常", f"解压配置失败: {e}")
 
@@ -159,7 +159,7 @@ class AquesTalkImportDialog(ctk.CTkToplevel):
                     mb.showinfo("导入成功", f"AquesTalk1 目录导入成功！\n可用声线: {', '.join(voices)}")
                     self._finish_import()
                 else:
-                    mb.showerror("错误", "所选目录中未找到 lib64 声线动态库文件。")
+                    mb.showerror("错误", "所选目录中未找到有效的 AquesTalk 声线动态库文件。")
             except Exception as e:
                 mb.showerror("导入异常", f"导入目录失败: {e}")
 

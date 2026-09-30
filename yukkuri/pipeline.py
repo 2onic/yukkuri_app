@@ -41,7 +41,12 @@ class YukkuriPipeline:
         self.loopback_manager = loopback_manager or LoopbackManager(source_name=config.source_name)
         self.on_segment_processed = on_segment_processed
 
-        self.player = AudioPlayer(target_sink=config.target_sink)
+        self.player = AudioPlayer(
+            target_sink=config.target_sink,
+            output_device=getattr(config, "output_device", None),
+            monitor_device=getattr(config, "monitor_device", None),
+            enable_monitor=config.enable_loopback
+        )
         self.mic_stream = MicrophoneStream(
             sample_rate=config.sample_rate,
             channels=config.channels,
@@ -62,11 +67,15 @@ class YukkuriPipeline:
     def set_loopback(self, enable: bool) -> bool:
         """动态开启或关闭本地回放监听 (耳机/扬声器同步收听)"""
         self.config.enable_loopback = enable
-        if enable:
-            return self.loopback_manager.start()
-        else:
-            self.loopback_manager.stop()
+        if sys.platform == "win32":
+            self.player.set_monitor(enable, device_id=getattr(self.config, "monitor_device", None))
             return True
+        else:
+            if enable:
+                return self.loopback_manager.start()
+            else:
+                self.loopback_manager.stop()
+                return True
 
     def set_mic_gain(self, gain: float):
         """动态调节麦克风软件增益"""
@@ -178,7 +187,10 @@ class YukkuriPipeline:
             self.mic_manager.setup()
 
         if self.config.enable_loopback:
-            self.loopback_manager.start()
+            if sys.platform == "win32":
+                self.player.set_monitor(True, device_id=getattr(self.config, "monitor_device", None))
+            else:
+                self.loopback_manager.start()
 
         print("\n" + "=" * 65)
         print("  油库里实时语音转换器已就绪")

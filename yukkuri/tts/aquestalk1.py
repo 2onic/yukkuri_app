@@ -49,14 +49,21 @@ class AquesTalk1Engine(BaseTTSEngine):
             raise ValueError("必须提供 lib_path 或 voice_resolver 之一以初始化 AquesTalk 引擎")
 
     def _load_library(self, voice: str, path: str):
-        """加载特定声线的动态库并配置符号签名"""
+        """加载特定声线的动态库并配置符号签名 (支持 Linux .so 与 Windows .dll)"""
         if not os.path.exists(path):
-            raise FileNotFoundError(f"未找到 libAquesTalk.so 动态库: {path}")
+            raise FileNotFoundError(f"未找到 AquesTalk 动态库: {path}")
 
+        lib = None
         try:
             lib = ctypes.cdll.LoadLibrary(path)
-        except Exception as e:
-            raise RuntimeError(f"无法加载 AquesTalk 动态库 {path}: {e}")
+        except Exception as e_cdll:
+            if hasattr(ctypes, "windll"):
+                try:
+                    lib = ctypes.windll.LoadLibrary(path)
+                except Exception as e_windll:
+                    raise RuntimeError(f"无法加载 AquesTalk 动态库 {path}: {e_windll}")
+            else:
+                raise RuntimeError(f"无法加载 AquesTalk 动态库 {path}: {e_cdll}")
 
         if hasattr(lib, 'AquesTalk_Synthe_Utf8'):
             synthe_fn = lib.AquesTalk_Synthe_Utf8

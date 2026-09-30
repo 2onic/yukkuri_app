@@ -1,14 +1,14 @@
 # yukkuri_app
 
-[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20PipeWire-blue.svg)](https://pipewire.org/)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20(PipeWire)%20%7C%20Windows%20(WASAPI)-blue.svg)](https://github.com/2onic/yukkuri_app)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-green.svg)](https://www.python.org/)
 [![Engine](https://img.shields.io/badge/ASR-SenseVoice%20%7C%20Vosk-orange.svg)](https://github.com/FunAudioLLM/SenseVoice)
 [![TTS](https://img.shields.io/badge/TTS-AquesTalk1-red.svg)](https://www.a-quest.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-一个运行于 Linux (PipeWire) 下的**实时语音转油库里音效**工具。
+一个跨平台的**实时语音转油库里音效**虚拟麦克风工具（支持 Linux PipeWire 与 Windows WASAPI）。
 
-说出普通话、英语或日语，程序将实时识别，并通过 **AquesTalk1** 引擎实时合成出油库里语音，注入到虚拟麦克风节点中。可在 Discord、腾讯会议、OBS中直接作为麦克风使用。
+说出普通话、英语或日语，程序将实时识别，并通过 **AquesTalk1** 引擎实时合成出油库里语音，注入到虚拟麦克风节点中。可在 Discord、QQ、微信、腾讯会议、OBS 等语音开黑或直播软件中直接作为麦克风使用。
 
 ---
 
@@ -23,7 +23,9 @@
   - **日文**：原生假名合成，自动纠偏助词读音（`は/へ` -> `わ/え`）。
   - **中英日数字混排**：无需手动切换语种，支持混合。
 - **异步双缓冲队列推流**：麦克风采集、VAD 检测与 TTS 合成/播放解耦，不阻塞录音。
-- **PipeWire 虚拟声卡原生集成**：自动将音频送入虚拟麦克风（`Yukkuri Virtual Mic`）。
+- **跨平台虚拟麦克风深度适配 (零系统污染)**：
+  - **Linux**：通过 PipeWire / pactl 原生直连（`pw-play --target yukkuri_sink`），自动动态创建与释放虚拟麦克风（`Yukkuri Virtual Mic`）。
+  - **Windows**：通过 VB-Audio Virtual Cable + WASAPI 专有输出，内置自动采样率协商与 8000Hz Mono -> 48000Hz Stereo 升混重采样，无缝对齐 Discord / OBS (`CABLE Output`)。
 
 ---
 
@@ -59,24 +61,22 @@ pip install -e .
 你可以通过命令行脚本配置，或者在启动 GUI 界面后点击【语音模型与声线库管理】一键导入：
 
 ```bash
-chmod +x setup_models.sh
+# 跨平台一键配置 (Windows / Linux 通用)：下载 Silero-VAD + SenseVoice 并自动扫描 AquesTalk
+python setup_models.py
 
-# 推荐一键配置：下载 Silero-VAD + SenseVoice-Small 并自动检测配置 AquesTalk
+# 导入 AquesTalk 多声线库 (支持 zip 压缩包、解压目录或 dll/so 库路径；留空则自动扫描)
+python setup_models.py --aquestalk [路径]
+
+# 检查当前所有模型就绪状态
+python setup_models.py --check
+
+# Linux 环境亦可直接执行脚本：
 ./setup_models.sh
-
-# 配置 AquesTalk 多声线库 (支持传入下载的 zip 包、解压目录或自动扫描)
-./setup_models.sh --aquestalk [aqtk1_lnx_200.zip 或解压目录]
-
-# 可选：下载 Vosk 离线模型 (支持 zh / ja / en)
-./setup_models.sh --vosk zh
-
-# 可选：全量配置所有模型
-./setup_models.sh --all
 ```
 
 > **注意（AquesTalk 专有授权）**：
-> `libAquesTalk.so` 属于 **[株式会社アクエスト (Aquest Corp.)](https://www.a-quest.com/)** 的专有财产，本项目不自带打包。
-> 请前往 [AQUEST 官方下载页](https://www.a-quest.com/download.html) 下载 **AquesTalk1 Linux** (aqtk1_lnx_200.zip)，然后通过 `./setup_models.sh --aquestalk` 或 GUI 向导导入即可解锁全套 9 种声线。
+> `libAquesTalk.so` / `AquesTalk.dll` 属于 **[株式会社アクエスト (Aquest Corp.)](https://www.a-quest.com/)** 的专有财产，本项目不自带打包。
+> 请前往 [AQUEST 官方下载页](https://www.a-quest.com/download.html) 获取相应平台的评价版，然后通过 `python setup_models.py --aquestalk` 或 GUI 向导导入即可解锁全套 9 种声线。
 
 ### 3. 运行转换器
 

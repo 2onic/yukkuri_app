@@ -70,5 +70,34 @@ class TestModelDownloader(unittest.TestCase):
         # sensevoice 软链接应成功建立
         self.assertTrue(os.path.exists(os.path.join(root, "sensevoice")))
 
+    def test_install_aquestalk_single_dll(self):
+        """测试直接导入单个 AquesTalk.dll"""
+        from yukkuri.model_downloader import install_aquestalk_from_archive
+        root = self.tmp_dir.name
+        dummy_dll = os.path.join(root, "AquesTalk.dll")
+        with open(dummy_dll, "wb") as f:
+            f.write(b"dummy dll content")
+
+        with patch("sys.platform", "win32"):
+            voices = install_aquestalk_from_archive(dummy_dll, root=root)
+            self.assertIn("f1", voices)
+            # 确认拷贝到了 libs/aquestalk
+            self.assertTrue(os.path.exists(os.path.join(root, "libs", "aquestalk", "AquesTalk.dll")))
+
+    def test_install_aquestalk_zip_dll(self):
+        """测试从 zip 压缩包中解压 AquesTalk.dll 或声线 dll"""
+        import zipfile
+        from yukkuri.model_downloader import install_aquestalk_from_archive
+        root = self.tmp_dir.name
+        zip_path = os.path.join(root, "aqtk1-win.zip")
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("aqtk1-win/AquesTalk.dll", b"fake dll")
+            zf.writestr("aqtk1-win/lib64/f2/AquesTalk.dll", b"fake f2 dll")
+
+        with patch("sys.platform", "win32"):
+            voices = install_aquestalk_from_archive(zip_path, root=root)
+            self.assertIn("f1", voices)
+            self.assertIn("f2", voices)
+
 if __name__ == "__main__":
     unittest.main()

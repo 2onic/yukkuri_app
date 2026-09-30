@@ -33,3 +33,24 @@ def get_input_devices() -> List[Tuple[Optional[int], str]]:
         print(f"[设备探测异常]: {e}")
     return device_list
 
+def get_output_devices() -> List[Tuple[Optional[int], str]]:
+    """
+    获取系统中所有可用的音频输出设备 (扬声器/耳机/虚拟播放通道)
+    返回: [(device_id, display_label), ...]
+    """
+    device_list: List[Tuple[Optional[int], str]] = [(None, "系统默认 (Default)")]
+    try:
+        devices = sd.query_devices()
+        for idx, dev in enumerate(devices):
+            if dev.get("max_output_channels", 0) > 0:
+                name = dev.get("name", f"Output {idx}")
+                is_virt = is_virtual_device(name)
+                tag = " [虚拟声卡]" if is_virt else ""
+                max_len = 30 if is_virt else 36
+                short_name = name[:max_len] + "..." if len(name) > max_len else name
+                device_list.append((idx, f"[{idx}] {short_name}{tag}"))
+    except Exception as e:
+        print(f"[输出设备探测异常]: {e}")
+    return device_list
+
+

@@ -177,15 +177,23 @@ def download_vosk(
     return target_dir
 
 def install_aquestalk_from_archive(archive_path: str, root: Optional[str] = None) -> List[str]:
-    """从本地 zip 或 tar 压缩包解压安装 AquesTalk 多声线库"""
+    """从本地 zip 或 tar 压缩包（或单个 dll/so 文件）解压安装 AquesTalk 多声线库"""
     root = root or get_project_root()
     target_lib64 = os.path.join(root, "libs", "aquestalk", "lib64")
+    target_base = os.path.join(root, "libs", "aquestalk")
     os.makedirs(target_lib64, exist_ok=True)
+    os.makedirs(target_base, exist_ok=True)
 
-    if archive_path.endswith(".zip"):
+    lower_path = archive_path.lower()
+    if lower_path.endswith((".dll", ".so")):
+        filename = os.path.basename(archive_path)
+        shutil.copy2(archive_path, os.path.join(target_lib64, filename))
+        shutil.copy2(archive_path, os.path.join(target_base, filename))
+    elif lower_path.endswith(".zip"):
         with zipfile.ZipFile(archive_path, "r") as zf:
             for member in zf.namelist():
-                if "lib64/" in member and member.endswith(".so"):
+                m_lower = member.lower()
+                if "lib64/" in member and (m_lower.endswith(".so") or m_lower.endswith(".dll")):
                     parts = member.split("lib64/")
                     if len(parts) > 1 and parts[1]:
                         rel_path = parts[1]
@@ -193,10 +201,18 @@ def install_aquestalk_from_archive(archive_path: str, root: Optional[str] = None
                         os.makedirs(os.path.dirname(out_file), exist_ok=True)
                         with zf.open(member) as src, open(out_file, "wb") as dst:
                             shutil.copyfileobj(src, dst)
-    elif archive_path.endswith((".tar.gz", ".tgz", ".tar.bz2")):
+                elif m_lower.endswith(".dll") or m_lower.endswith(".so"):
+                    out_file = os.path.join(target_lib64, os.path.basename(member))
+                    with zf.open(member) as src, open(out_file, "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+                    out_base = os.path.join(target_base, os.path.basename(member))
+                    with zf.open(member) as src, open(out_base, "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+    elif lower_path.endswith((".tar.gz", ".tgz", ".tar.bz2")):
         with tarfile.open(archive_path, "r:*") as tf:
             for member in tf.getmembers():
-                if "lib64/" in member.name and member.name.endswith(".so"):
+                m_lower = member.name.lower()
+                if "lib64/" in member.name and (m_lower.endswith(".so") or m_lower.endswith(".dll")):
                     parts = member.name.split("lib64/")
                     if len(parts) > 1 and parts[1]:
                         rel_path = parts[1]
@@ -206,6 +222,12 @@ def install_aquestalk_from_archive(archive_path: str, root: Optional[str] = None
                         if f:
                             with open(out_file, "wb") as dst:
                                 shutil.copyfileobj(f, dst)
+                elif m_lower.endswith(".so") or m_lower.endswith(".dll"):
+                    out_file = os.path.join(target_lib64, os.path.basename(member.name))
+                    f = tf.extractfile(member)
+                    if f:
+                        with open(out_file, "wb") as dst:
+                            shutil.copyfileobj(f, dst)
 
     from yukkuri.config import AppConfig
     cfg = AppConfig(project_root=root)
@@ -215,7 +237,9 @@ def install_aquestalk_from_dir(src_dir: str, root: Optional[str] = None) -> List
     """从本地解压好的目录导入并配置 AquesTalk 多声线库"""
     root = root or get_project_root()
     target_lib64 = os.path.join(root, "libs", "aquestalk", "lib64")
+    target_base = os.path.join(root, "libs", "aquestalk")
     os.makedirs(target_lib64, exist_ok=True)
+    os.makedirs(target_base, exist_ok=True)
 
     # 寻找 lib64 目录
     lib64_dir = None
@@ -233,10 +257,16 @@ def install_aquestalk_from_dir(src_dir: str, root: Optional[str] = None) -> List
 
     for item in os.listdir(lib64_dir):
         sub = os.path.join(lib64_dir, item)
-        if os.path.isdir(sub) and os.path.exists(os.path.join(sub, "libAquesTalk.so")):
-            target_sub = os.path.join(target_lib64, item)
-            os.makedirs(target_sub, exist_ok=True)
-            shutil.copy2(os.path.join(sub, "libAquesTalk.so"), os.path.join(target_sub, "libAquesTalk.so"))
+        if os.path.isdir(sub):
+            for libname in ["libAquesTalk.so", "AquesTalk.dll", "AquesTalk2.dll"]:
+                candidate = os.path.join(sub, libname)
+                if os.path.exists(candidate):
+                    target_sub = os.path.join(target_lib64, item)
+                    os.makedirs(target_sub, exist_ok=True)
+                    shutil.copy2(candidate, os.path.join(target_sub, libname))
+        elif item.lower().endswith((".so", ".dll")):
+            shutil.copy2(sub, os.path.join(target_lib64, item))
+            shutil.copy2(sub, os.path.join(target_base, item))
 
     from yukkuri.config import AppConfig
     cfg = AppConfig(project_root=root)
@@ -254,6 +284,8 @@ def auto_detect_and_install_aquestalk(root: Optional[str] = None) -> Optional[Li
         os.path.join(home, "opt", "aqtk1_lnx_200", "aqtk1_lnx"),
         "/opt/aqtk1_lnx_200",
         "/opt/aqtk1_lnx_200/aqtk1_lnx",
+        os.path.join(home, "Downloads", "aqtk1-win"),
+        os.path.join(home, "Desktop", "aqtk1-win"),
     ]
     for d in dir_candidates:
         if os.path.isdir(d):
@@ -261,11 +293,14 @@ def auto_detect_and_install_aquestalk(root: Optional[str] = None) -> Optional[Li
             if voices:
                 return voices
 
-    # 2. 扫描压缩包
+    # 2. 扫描压缩包与动态库
     archive_candidates = [
         os.path.join(root, "aqtk1_lnx_200.zip"),
         os.path.join(home, "Downloads", "aqtk1_lnx_200.zip"),
         os.path.join(home, "下载", "aqtk1_lnx_200.zip"),
+        os.path.join(home, "Downloads", "aqtk1-win.zip"),
+        os.path.join(home, "Downloads", "AquesTalk.dll"),
+        os.path.join(home, "Desktop", "AquesTalk.dll"),
     ]
     for a in archive_candidates:
         if os.path.isfile(a):

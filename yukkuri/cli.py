@@ -53,6 +53,14 @@ def parse_args() -> argparse.Namespace:
         help="麦克风输入设备索引 ID (默认使用系统默认录音设备)"
     )
     parser.add_argument(
+        "--output-device", type=int, default=None,
+        help="目标播放设备索引 ID (Windows 默认自动寻找 CABLE Input)"
+    )
+    parser.add_argument(
+        "--monitor-device", type=int, default=None,
+        help="本地回放监听输出设备索引 ID (耳机/扬声器)"
+    )
+    parser.add_argument(
         "--max-speech-duration", type=float, default=6.0,
         help="最长连续说话截断时间 (秒, 默认: 6.0, 设为 0 或负数则关闭强制截断)"
     )
@@ -104,6 +112,8 @@ def main():
         speed=args.speed,
         target_sink=args.target,
         device=args.device,
+        output_device=args.output_device,
+        monitor_device=args.monitor_device,
         custom_model_path=args.model,
         enable_dynamic_mic=not args.no_dynamic_mic,
         enable_loopback=args.loopback,
@@ -115,9 +125,11 @@ def main():
     # 1. 查找并初始化 AquesTalk 多声线合成引擎
     so_path = config.find_aquestalk_library(config.voice)
     if not so_path:
-        print(f"[错误] 未找到声线 '{config.voice}' 对应的 libAquesTalk.so 动态库！", file=sys.stderr)
+        lib_name = "AquesTalk.dll" if sys.platform == "win32" else "libAquesTalk.so"
+        print(f"[错误] 未找到声线 '{config.voice}' 对应的 {lib_name} 动态库！", file=sys.stderr)
         print("请运行以下命令配置 AquesTalk 语音库：", file=sys.stderr)
-        print("  ./setup_models.sh --aquestalk", file=sys.stderr)
+        cmd_hint = "python setup_models.py --aquestalk" if sys.platform == "win32" else "./setup_models.sh --aquestalk"
+        print(f"  {cmd_hint}", file=sys.stderr)
         return 1
 
     try:
@@ -138,7 +150,8 @@ def main():
         if not model_dir or not vad_file:
             print("[错误] 未找到 SenseVoice 或 Silero-VAD 模型文件！", file=sys.stderr)
             print("请先执行以下命令下载所需模型：", file=sys.stderr)
-            print("  ./setup_models.sh", file=sys.stderr)
+            cmd_hint = "python setup_models.py" if sys.platform == "win32" else "./setup_models.sh"
+            print(f"  {cmd_hint}", file=sys.stderr)
             return 1
 
         try:
@@ -176,7 +189,7 @@ def main():
 
     # 3. 虚拟声卡管理
     mic_manager = None
-    if config.enable_dynamic_mic:
+    if config.enable_dynamic_mic or sys.platform == "win32":
         mic_manager = VirtualMicManager(sink_name=config.target_sink)
 
     # 4. 构建并启动流水线

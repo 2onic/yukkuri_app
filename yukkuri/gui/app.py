@@ -19,7 +19,7 @@ from yukkuri.asr.vosk import VoskASR
 from yukkuri.audio.vad import SileroVAD
 from yukkuri.audio.virtual_mic import VirtualMicManager
 from yukkuri.pipeline import YukkuriPipeline
-from yukkuri.gui.devices import get_input_devices
+from yukkuri.gui.devices import get_input_devices, get_output_devices
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
@@ -40,8 +40,9 @@ class YukkuriApp(ctk.CTk):
         self.is_running = False
         self.msg_queue: queue.Queue = queue.Queue()
 
-        # 音频输入设备映射
+        # 音频设备映射
         self.device_map: Dict[str, Optional[int]] = {}
+        self.monitor_device_map: Dict[str, Optional[int]] = {}
 
         # 构建界面
         self._build_ui()
@@ -84,9 +85,10 @@ class YukkuriApp(ctk.CTk):
         )
         self.status_indicator.pack(side="right", padx=(10, 0))
 
+        badge_sink = "CABLE Input" if sys.platform == "win32" else "yukkuri_sink"
         self.mic_badge = ctk.CTkLabel(
             status_sub_frame,
-            text="虚拟设备: yukkuri_sink",
+            text=f"虚拟设备: {badge_sink}",
             text_color="#64B5F6",
             font=ctk.CTkFont(size=13)
         )
@@ -203,12 +205,18 @@ class YukkuriApp(ctk.CTk):
         )
         self.switch_loopback.pack(padx=12, pady=(6, 6), anchor="w")
 
-        self.switch_dyn_mic = ctk.CTkSwitch(
-            opt_card,
-            text="退出时自动释放虚拟声卡"
-        )
-        self.switch_dyn_mic.select()
-        self.switch_dyn_mic.pack(padx=12, pady=(0, 10), anchor="w")
+        if sys.platform != "win32":
+            self.switch_dyn_mic = ctk.CTkSwitch(
+                opt_card,
+                text="退出时自动释放虚拟声卡"
+            )
+            self.switch_dyn_mic.select()
+            self.switch_dyn_mic.pack(padx=12, pady=(0, 10), anchor="w")
+        else:
+            self.switch_dyn_mic = None
+            ctk.CTkLabel(opt_card, text="耳机监听输出设备 (回放输出):", font=ctk.CTkFont(size=12)).pack(anchor="w", padx=12, pady=(4, 2))
+            self.monitor_menu = ctk.CTkOptionMenu(opt_card, values=["系统默认 (Default)"])
+            self.monitor_menu.pack(fill="x", padx=12, pady=(0, 10))
 
         # 3. 右侧内容区 (日志与快捷播报)
         right_panel = ctk.CTkFrame(self, corner_radius=10)
@@ -296,6 +304,17 @@ class YukkuriApp(ctk.CTk):
             self.device_menu.configure(values=labels)
             self.device_menu.set(labels[0])
 
+        if sys.platform == "win32" and hasattr(self, "monitor_menu"):
+            out_devices = get_output_devices()
+            self.monitor_device_map.clear()
+            out_labels = []
+            for dev_id, label in out_devices:
+                self.monitor_device_map[label] = dev_id
+                out_labels.append(label)
+            if out_labels:
+                self.monitor_menu.configure(values=out_labels)
+                self.monitor_menu.set(out_labels[0])
+
     def _refresh_voices(self):
         """刷新并加载可用的 AquesTalk 声线列表"""
         from yukkuri.config import AppConfig, AQUESTALK_VOICES
@@ -335,12 +354,18 @@ class YukkuriApp(ctk.CTk):
     def _on_loopback_toggled(self):
         enable = bool(self.switch_loopback.get())
         if self.pipeline and self.is_running:
+            if sys.platform == "win32" and hasattr(self, "monitor_menu"):
+                mon_label = self.monitor_menu.get()
+                mon_id = self.monitor_device_map.get(mon_label, None)
+                self.pipeline.config.monitor_device = mon_id
             ok = self.pipeline.set_loopback(enable)
             if enable:
                 if ok:
-                    self._append_log("系统", "已开启回放监听 (通过 pw-loopback)")
+                    msg = "已开启回放监听 (通过 WASAPI 双路输出)" if sys.platform == "win32" else "已开启回放监听 (通过 pw-loopback)"
+                    self._append_log("系统", msg)
                 else:
-                    self._append_log("系统", "回放监听启动失败，请确认系统支持 pw-loopback 或 pactl")
+                    msg = "回放监听启动失败，请检查输出设备" if sys.platform == "win32" else "回放监听启动失败，请确认系统支持 pw-loopback 或 pactl"
+                    self._append_log("系统", msg)
             else:
                 self._append_log("系统", "已关闭回放监听")
         else:
@@ -448,7 +473,12 @@ class YukkuriApp(ctk.CTk):
         vad_silence = self.vad_slider.get() / 1000.0
         vad_max_speech = round(float(self.max_speech_slider.get()), 1)
         mic_gain = round(float(self.gain_slider.get()), 1)
-        enable_dyn_mic = bool(self.switch_dyn_mic.get())
+        monitor_device_id = None
+        if sys.platform == "win32" and hasattr(self, "monitor_menu"):
+            selected_mon_label = self.monitor_menu.get()
+            monitor_device_id = self.monitor_device_map.get(selected_mon_label, None)
+
+        enable_dyn_mic = bool(self.switch_dyn_mic.get()) if getattr(self, "switch_dyn_mic", None) is not None else False
         enable_loopback = bool(self.switch_loopback.get())
         enable_max_speech = bool(self.switch_max_speech.get())
 
@@ -461,6 +491,7 @@ class YukkuriApp(ctk.CTk):
             voice=selected_voice,
             speed=speed,
             device=device_id,
+            monitor_device=monitor_device_id,
             mic_gain=mic_gain,
             vad_min_silence=vad_silence,
             vad_max_speech=vad_max_speech,
@@ -523,7 +554,10 @@ class YukkuriApp(ctk.CTk):
                         except Exception:
                             vad_detector = None
 
-                mic_manager = VirtualMicManager(sink_name=config.target_sink) if config.enable_dynamic_mic else None
+                if sys.platform == "win32":
+                    mic_manager = VirtualMicManager(sink_name=config.target_sink)
+                else:
+                    mic_manager = VirtualMicManager(sink_name=config.target_sink) if config.enable_dynamic_mic else None
 
                 # 回调推送到 UI
                 def on_segment(text: str, koe: str, stats: dict):
@@ -580,8 +614,10 @@ class YukkuriApp(ctk.CTk):
             if msg_type == "started":
                 self.is_running = True
                 self.btn_toggle.configure(state="normal", text="⏹ 停止转换器", fg_color="#E04747", hover_color="#C62828")
-                self.status_indicator.configure(text="● 正在运行 (已监听)", text_color="#66BB6A")
-                self._append_log("系统", "转换器启动成功！请在软件中将麦克风选择为 [Yukkuri Virtual Mic]")
+                if sys.platform == "win32":
+                    self._append_log("系统", "转换器启动成功！已推流至 [CABLE Input]，请在语音软件中将麦克风选择为 [CABLE Output]")
+                else:
+                    self._append_log("系统", "转换器启动成功！请在软件中将麦克风选择为 [Yukkuri Virtual Mic]")
 
             elif msg_type == "stopped":
                 self.is_running = False
