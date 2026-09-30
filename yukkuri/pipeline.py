@@ -68,6 +68,12 @@ class YukkuriPipeline:
             self.loopback_manager.stop()
             return True
 
+    def set_mic_gain(self, gain: float):
+        """动态调节麦克风软件增益"""
+        self.config.mic_gain = max(0.1, float(gain))
+        if self.mic_stream:
+            self.mic_stream.set_gain(self.config.mic_gain)
+
     @property
     def is_speech_detected(self) -> bool:
         """当前是否正在检测到持续人声"""

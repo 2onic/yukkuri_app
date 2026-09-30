@@ -35,6 +35,10 @@ class TestVAD(unittest.TestCase):
             args = parse_args()
             self.assertTrue(args.no_max_speech)
 
+        with patch("sys.argv", ["yukkuri", "--mic-gain", "1.8"]):
+            args = parse_args()
+            self.assertEqual(args.mic_gain, 1.8)
+
     @patch("yukkuri.audio.vad.sherpa_onnx")
     @patch("os.path.exists", return_value=True)
     def test_silerovad_init_and_parameter_updates(self, mock_exists, mock_sherpa):

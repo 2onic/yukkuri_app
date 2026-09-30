@@ -149,7 +149,7 @@ class YukkuriApp(ctk.CTk):
         dev_card = self._create_card(left_panel, "输入麦克风选择")
 
         dev_row = ctk.CTkFrame(dev_card, fg_color="transparent")
-        dev_row.pack(fill="x", padx=12, pady=(6, 12))
+        dev_row.pack(fill="x", padx=12, pady=(6, 6))
         dev_row.grid_columnconfigure(0, weight=1)
 
         self.device_menu = ctk.CTkOptionMenu(dev_row, values=["正在获取设备..."])
@@ -157,6 +157,12 @@ class YukkuriApp(ctk.CTk):
 
         btn_refresh = ctk.CTkButton(dev_row, text="刷新", width=48, command=self._refresh_devices)
         btn_refresh.grid(row=0, column=1)
+
+        self.gain_label = ctk.CTkLabel(dev_card, text="麦克风增益: 1.0x (标准音量)", font=ctk.CTkFont(size=13))
+        self.gain_label.pack(anchor="w", padx=12, pady=(4, 0))
+        self.gain_slider = ctk.CTkSlider(dev_card, from_=0.5, to=3.0, number_of_steps=25, command=self._on_gain_changed)
+        self.gain_slider.set(1.0)
+        self.gain_slider.pack(fill="x", padx=12, pady=(2, 12))
 
         # 分组 3: 语速与端点灵敏度
         tune_card = self._create_card(left_panel, "声音与断句调优")
@@ -343,6 +349,14 @@ class YukkuriApp(ctk.CTk):
             else:
                 self._append_log("系统", "已关闭回放监听预设")
 
+    def _on_gain_changed(self, value):
+        gain = round(float(value), 1)
+        percent = int(gain * 100)
+        note = "标准音量" if gain == 1.0 else ("放大" if gain > 1.0 else "降低")
+        self.gain_label.configure(text=f"麦克风增益: {gain:.1f}x ({percent}%, {note})")
+        if self.pipeline:
+            self.pipeline.set_mic_gain(gain)
+
     def _on_speed_changed(self, value):
         spd = int(value)
         self.speed_label.configure(text=f"油库里语速: {spd}%")
@@ -433,6 +447,7 @@ class YukkuriApp(ctk.CTk):
         speed = int(self.speed_slider.get())
         vad_silence = self.vad_slider.get() / 1000.0
         vad_max_speech = round(float(self.max_speech_slider.get()), 1)
+        mic_gain = round(float(self.gain_slider.get()), 1)
         enable_dyn_mic = bool(self.switch_dyn_mic.get())
         enable_loopback = bool(self.switch_loopback.get())
         enable_max_speech = bool(self.switch_max_speech.get())
@@ -446,6 +461,7 @@ class YukkuriApp(ctk.CTk):
             voice=selected_voice,
             speed=speed,
             device=device_id,
+            mic_gain=mic_gain,
             vad_min_silence=vad_silence,
             vad_max_speech=vad_max_speech,
             vad_enable_max_speech=enable_max_speech,

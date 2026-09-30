@@ -35,6 +35,10 @@ class MicrophoneStream:
         self.actual_channels = channels
         self.current_level: float = 0.0      # 实时 RMS 音量指示 (0.0 ~ 1.0)
 
+    def set_gain(self, gain: float):
+        """动态调整软件增益倍数"""
+        self.gain = max(0.1, float(gain))
+
     def _resolve_input_parameters(self) -> Tuple[int, int]:
         """探测并返回声卡硬件支持的 (sample_rate, channels)"""
         # 1. 优先尝试直接支持目标配置 (如 16000Hz, 1ch)

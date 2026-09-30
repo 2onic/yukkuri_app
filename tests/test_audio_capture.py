@@ -54,6 +54,30 @@ class TestAudioCapture(unittest.TestCase):
         # 实时音量 level 应该大于 0
         self.assertGreater(stream.current_level, 0.0)
 
+    def test_dynamic_gain_adjustment(self):
+        """测试动态调整软件增益倍数"""
+        stream = MicrophoneStream(sample_rate=16000, channels=1, gain=1.0)
+        self.assertEqual(stream.gain, 1.0)
+        stream.set_gain(2.5)
+        self.assertEqual(stream.gain, 2.5)
+        # 测试防过低下限保护
+        stream.set_gain(0.01)
+        self.assertEqual(stream.gain, 0.1)
+
+    def test_pipeline_set_mic_gain(self):
+        """测试流水线级动态调节麦克风增益"""
+        from yukkuri.config import AppConfig
+        from yukkuri.pipeline import YukkuriPipeline
+        pipeline = YukkuriPipeline(
+            config=AppConfig(mic_gain=1.2),
+            asr=MagicMock(),
+            tts=MagicMock(),
+        )
+        self.assertEqual(pipeline.mic_stream.gain, 1.2)
+        pipeline.set_mic_gain(1.8)
+        self.assertEqual(pipeline.config.mic_gain, 1.8)
+        self.assertEqual(pipeline.mic_stream.gain, 1.8)
+
     def test_is_virtual_device(self):
         """测试虚拟声卡关键字识别"""
         self.assertTrue(is_virtual_device("yukkuri_sink.monitor"))
