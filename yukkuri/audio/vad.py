@@ -29,19 +29,23 @@ class SileroVAD:
         if not os.path.exists(vad_model_path):
             raise FileNotFoundError(f"未找到 VAD 模型文件: {vad_model_path}")
 
+        self.sample_rate = sample_rate
+        self.min_silence_duration = float(min_silence_duration)
+        if max_speech_duration is None or max_speech_duration <= 0:
+            self.max_speech_duration = 0.0
+        else:
+            self.max_speech_duration = float(max_speech_duration)
+
         vad_config = sherpa_onnx.VadModelConfig()
         vad_config.silero_vad.model = vad_model_path
         vad_config.silero_vad.min_silence_duration = min_silence_duration
         vad_config.silero_vad.min_speech_duration = min_speech_duration
-        vad_config.silero_vad.max_speech_duration = max_speech_duration
+        vad_config.silero_vad.max_speech_duration = self.max_speech_duration if self.max_speech_duration > 0 else 99999.0
         vad_config.silero_vad.threshold = threshold
         vad_config.sample_rate = sample_rate
 
-        buf_size = max(60, int(max_speech_duration * 3))
+        buf_size = max(60, int(self.max_speech_duration * 3)) if self.max_speech_duration > 0 else 60
         self._detector = sherpa_onnx.VoiceActivityDetector(vad_config, buffer_size_in_seconds=buf_size)
-        self.sample_rate = sample_rate
-        self.min_silence_duration = float(min_silence_duration)
-        self.max_speech_duration = float(max_speech_duration)
 
     def is_speech_detected(self) -> bool:
         """返回当前是否正在检测到持续人声"""
@@ -70,13 +74,21 @@ class SileroVAD:
                 pass
 
     def set_max_speech_duration(self, duration: float):
-        """动态调整最大连续说话截断保护时长 (秒)"""
-        self.max_speech_duration = max(1.0, float(duration))
-        if self._detector is not None:
-            try:
-                self._detector.config.silero_vad.max_speech_duration = self.max_speech_duration
-            except Exception:
-                pass
+        """动态调整最大连续说话截断保护时长 (秒，<=0 表示手动关闭截断保护)"""
+        if duration is None or duration <= 0:
+            self.max_speech_duration = 0.0
+            if self._detector is not None:
+                try:
+                    self._detector.config.silero_vad.max_speech_duration = 99999.0
+                except Exception:
+                    pass
+        else:
+            self.max_speech_duration = max(1.0, float(duration))
+            if self._detector is not None:
+                try:
+                    self._detector.config.silero_vad.max_speech_duration = self.max_speech_duration
+                except Exception:
+                    pass
 
     def accept_waveform(self, samples: np.ndarray) -> List[np.ndarray]:
         """

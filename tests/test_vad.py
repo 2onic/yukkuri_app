@@ -16,10 +16,24 @@ class TestVAD(unittest.TestCase):
         """测试 AppConfig 默认截断时间与 CLI 参数解析"""
         cfg = AppConfig()
         self.assertEqual(cfg.vad_max_speech, 6.0)
+        self.assertTrue(cfg.vad_enable_max_speech)
+        self.assertEqual(cfg.get_effective_max_speech_duration(), 6.0)
+
+        # 禁用截断测试
+        cfg.vad_enable_max_speech = False
+        self.assertEqual(cfg.get_effective_max_speech_duration(), 0.0)
+
+        cfg_zero = AppConfig(vad_max_speech=0.0)
+        self.assertEqual(cfg_zero.get_effective_max_speech_duration(), 0.0)
 
         with patch("sys.argv", ["yukkuri", "--max-speech-duration", "8.5"]):
             args = parse_args()
             self.assertEqual(args.max_speech_duration, 8.5)
+            self.assertFalse(args.no_max_speech)
+
+        with patch("sys.argv", ["yukkuri", "--no-max-speech"]):
+            args = parse_args()
+            self.assertTrue(args.no_max_speech)
 
     @patch("yukkuri.audio.vad.sherpa_onnx")
     @patch("os.path.exists", return_value=True)
@@ -87,6 +101,40 @@ class TestVAD(unittest.TestCase):
         mock_detector.flush.assert_called_once()
         self.assertEqual(len(segments), 1)
         self.assertEqual(len(segments[0]), 33600)
+
+    @patch("yukkuri.audio.vad.sherpa_onnx")
+    @patch("os.path.exists", return_value=True)
+    def test_silerovad_manually_disabled_does_not_flush(self, mock_exists, mock_sherpa):
+        """测试手动关闭截断保护时，即使长语音也不会强制调用 flush 截断"""
+        mock_detector = MagicMock()
+        mock_sherpa.VoiceActivityDetector.return_value = mock_detector
+
+        # max_speech_duration 传 0.0 表示关闭截断
+        vad = SileroVAD(
+            vad_model_path="dummy.onnx",
+            sample_rate=16000,
+            max_speech_duration=0.0
+        )
+        self.assertEqual(vad.max_speech_duration, 0.0)
+
+        # 模拟长语音持续检测到人声
+        mock_detector.is_speech_detected.return_value = True
+        mock_detector.current_segment.samples = [0.1] * 160000 # 10 秒语音
+        mock_detector.empty.return_value = True
+
+        chunk = np.zeros(800, dtype=np.float32)
+        segments = vad.accept_waveform(chunk)
+
+        # 绝不能调用 flush()，保持整段语音完整
+        mock_detector.flush.assert_not_called()
+        self.assertEqual(len(segments), 0)
+
+        # 动态关闭测试：原来开启，后来设为 0
+        vad.set_max_speech_duration(5.0)
+        self.assertEqual(vad.max_speech_duration, 5.0)
+        vad.set_max_speech_duration(0.0)
+        self.assertEqual(vad.max_speech_duration, 0.0)
+        self.assertEqual(mock_detector.config.silero_vad.max_speech_duration, 99999.0)
 
     def test_pipeline_is_speech_detected(self):
         """测试 pipeline.is_speech_detected 正确代理 VAD 状态"""

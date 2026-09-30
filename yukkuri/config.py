@@ -38,9 +38,14 @@ class AppConfig:
     # VAD 参数
     vad_min_silence: float = 0.35       # 静音断句阈值 (秒)
     vad_min_speech: float = 0.15        # 最短有效语音长度 (秒)
-    vad_max_speech: float = 6.0         # 最长单句强制截断断句 (秒)
+    vad_max_speech: float = 6.0         # 最长单句强制截断断句 (秒, <=0 表示关闭截断)
+    vad_enable_max_speech: bool = True  # 是否启用最长单句强制截断保护
     vad_threshold: float = 0.5          # VAD 灵敏度概率 (0.0 ~ 1.0)
     vad_min_sample_duration: float = 0.2 # 忽略过短杂音 (秒)
+
+    def get_effective_max_speech_duration(self) -> float:
+        """获取实际生效的截断保护时长 (若未启用则返回 0.0)"""
+        return self.vad_max_speech if self.vad_enable_max_speech and self.vad_max_speech > 0 else 0.0
 
     # 性能与调试
     num_threads: int = 4

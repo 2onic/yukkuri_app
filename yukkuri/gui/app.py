@@ -173,8 +173,16 @@ class YukkuriApp(ctk.CTk):
         self.vad_slider.set(350)
         self.vad_slider.pack(fill="x", padx=12, pady=(2, 10))
 
+        self.switch_max_speech = ctk.CTkSwitch(
+            tune_card,
+            text="限制单句最长录音 (防长语音卡顿)",
+            command=self._on_max_speech_switch_toggled
+        )
+        self.switch_max_speech.select()
+        self.switch_max_speech.pack(padx=12, pady=(4, 2), anchor="w")
+
         self.max_speech_label = ctk.CTkLabel(tune_card, text="最长单句截断: 6.0 秒", font=ctk.CTkFont(size=13))
-        self.max_speech_label.pack(anchor="w", padx=12, pady=(4, 0))
+        self.max_speech_label.pack(anchor="w", padx=12, pady=(2, 0))
         self.max_speech_slider = ctk.CTkSlider(tune_card, from_=2.0, to=15.0, number_of_steps=26, command=self._on_max_speech_changed)
         self.max_speech_slider.set(6.0)
         self.max_speech_slider.pack(fill="x", padx=12, pady=(2, 12))
@@ -349,12 +357,33 @@ class YukkuriApp(ctk.CTk):
             if self.pipeline.vad:
                 self.pipeline.vad.set_min_silence_duration(ms / 1000.0)
 
+    def _on_max_speech_switch_toggled(self):
+        enabled = bool(self.switch_max_speech.get())
+        if enabled:
+            self.max_speech_slider.configure(state="normal")
+            sec = round(float(self.max_speech_slider.get()), 1)
+            self.max_speech_label.configure(text=f"最长单句截断: {sec} 秒")
+            if self.pipeline and self.pipeline.config:
+                self.pipeline.config.vad_enable_max_speech = True
+                self.pipeline.config.vad_max_speech = sec
+                if self.pipeline.vad:
+                    self.pipeline.vad.set_max_speech_duration(sec)
+        else:
+            self.max_speech_slider.configure(state="disabled")
+            self.max_speech_label.configure(text="最长单句截断: 已手动关闭 (不限制长度)")
+            if self.pipeline and self.pipeline.config:
+                self.pipeline.config.vad_enable_max_speech = False
+                if self.pipeline.vad:
+                    self.pipeline.vad.set_max_speech_duration(0.0)
+
     def _on_max_speech_changed(self, value):
+        if not bool(self.switch_max_speech.get()):
+            return
         sec = round(float(value), 1)
         self.max_speech_label.configure(text=f"最长单句截断: {sec} 秒")
         if self.pipeline and self.pipeline.config:
             self.pipeline.config.vad_max_speech = sec
-            if self.pipeline.vad:
+            if self.pipeline.config.vad_enable_max_speech and self.pipeline.vad:
                 self.pipeline.vad.set_max_speech_duration(sec)
 
     def _clear_log(self):
@@ -406,6 +435,7 @@ class YukkuriApp(ctk.CTk):
         vad_max_speech = round(float(self.max_speech_slider.get()), 1)
         enable_dyn_mic = bool(self.switch_dyn_mic.get())
         enable_loopback = bool(self.switch_loopback.get())
+        enable_max_speech = bool(self.switch_max_speech.get())
 
         selected_voice_opt = self.voice_menu.get()
         selected_voice = selected_voice_opt.split(":")[0].strip() if ":" in selected_voice_opt else "f1"
@@ -418,6 +448,7 @@ class YukkuriApp(ctk.CTk):
             device=device_id,
             vad_min_silence=vad_silence,
             vad_max_speech=vad_max_speech,
+            vad_enable_max_speech=enable_max_speech,
             enable_dynamic_mic=enable_dyn_mic,
             enable_loopback=enable_loopback,
         )
@@ -453,7 +484,7 @@ class YukkuriApp(ctk.CTk):
                         sample_rate=config.sample_rate,
                         min_silence_duration=config.vad_min_silence,
                         min_speech_duration=config.vad_min_speech,
-                        max_speech_duration=config.vad_max_speech,
+                        max_speech_duration=config.get_effective_max_speech_duration(),
                         threshold=config.vad_threshold
                     )
                 else:
@@ -470,7 +501,7 @@ class YukkuriApp(ctk.CTk):
                                 sample_rate=config.sample_rate,
                                 min_silence_duration=config.vad_min_silence,
                                 min_speech_duration=config.vad_min_speech,
-                                max_speech_duration=config.vad_max_speech,
+                                max_speech_duration=config.get_effective_max_speech_duration(),
                                 threshold=config.vad_threshold
                             )
                         except Exception:

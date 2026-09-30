@@ -18,7 +18,7 @@ from yukkuri.pipeline import YukkuriPipeline
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="yukkuri",
-        description="新一代 Linux 实时语音转油库里音效虚拟麦克风工具"
+        description="实时语音转油库里音效虚拟麦克风工具"
     )
     parser.add_argument(
         "--engine", type=str, default="sensevoice", choices=["sensevoice", "vosk"],
@@ -54,7 +54,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--max-speech-duration", type=float, default=6.0,
-        help="最长连续说话截断保护时间 (秒, 默认: 6.0, 防止持续录音不触发断句)"
+        help="最长连续说话截断时间 (秒, 默认: 6.0, 设为 0 或负数则关闭强制截断)"
+    )
+    parser.add_argument(
+        "--no-max-speech", "--disable-cutoff", action="store_true",
+        help="手动关闭最长单句强制截断保护"
     )
     parser.add_argument(
         "--no-dynamic-mic", action="store_true",
@@ -88,6 +92,7 @@ def main():
         print()
         return 0
 
+    enable_max_speech = (not args.no_max_speech) and (args.max_speech_duration > 0)
     config = AppConfig(
         engine=args.engine,
         lang=args.lang,
@@ -98,7 +103,8 @@ def main():
         custom_model_path=args.model,
         enable_dynamic_mic=not args.no_dynamic_mic,
         enable_loopback=args.loopback,
-        vad_max_speech=args.max_speech_duration,
+        vad_max_speech=args.max_speech_duration if args.max_speech_duration > 0 else 0.0,
+        vad_enable_max_speech=enable_max_speech,
     )
 
     # 1. 查找并初始化 AquesTalk 多声线合成引擎
@@ -139,7 +145,7 @@ def main():
                 sample_rate=config.sample_rate,
                 min_silence_duration=config.vad_min_silence,
                 min_speech_duration=config.vad_min_speech,
-                max_speech_duration=config.vad_max_speech,
+                max_speech_duration=config.get_effective_max_speech_duration(),
                 threshold=config.vad_threshold
             )
         except Exception as e:
