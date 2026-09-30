@@ -6,12 +6,20 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+RESOLVED_PYTHON=""
+for py in python3 python py; do
+    if command -v "$py" >/dev/null 2>&1; then
+        RESOLVED_PYTHON="$py"
+        break
+    fi
+done
+
 show_help() {
     echo "使用方式: ./setup_models.sh [选项]"
     echo ""
     echo "选项:"
     echo "  (无参数)              下载默认推荐模型 (Silero-VAD + SenseVoice-Small)"
-    echo "  --sensevoice          仅下载 SenseVoice-Small 多语种端到端模型 (约 230MB)"
+    echo "  --sensevoice          仅下载 SenseVoice-Small 多语种端到端模型 (约 155MB)"
     echo "  --vad                 仅下载 Silero-VAD 语音活动检测器 (约 630KB)"
     echo "  --vosk [zh|ja|en|all] 下载 Vosk 离线模型 (默认: zh，可选 ja/en/all)"
     echo "  --aquestalk [zip|dir] 配置 AquesTalk1 多声线合成库 (支持传入 zip、目录或自动检测)"
@@ -31,8 +39,11 @@ unzip_file() {
     local dest_dir="$2"
     if command -v unzip >/dev/null 2>&1; then
         unzip -q -o "$zip_file" -d "$dest_dir"
+    elif [ -n "$RESOLVED_PYTHON" ]; then
+        "$RESOLVED_PYTHON" -c "import zipfile; zipfile.ZipFile('$zip_file').extractall('$dest_dir')"
     else
-        python3 -c "import zipfile; zipfile.ZipFile('$zip_file').extractall('$dest_dir')"
+        echo "[错误] 缺少 unzip 或 Python，无法解压 $zip_file" >&2
+        return 1
     fi
 }
 
@@ -49,19 +60,70 @@ download_vad() {
 
 download_sensevoice() {
     echo ">>> 正在检查 SenseVoice-Small 识别模型..."
-    local SENSE_DIR="sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17"
-    if [ ! -f "$SENSE_DIR/model.int8.onnx" ] && [ ! -f "sensevoice/model.int8.onnx" ]; then
-        echo ">>> 正在下载 SenseVoice-Small 模型压缩包 (约 230MB)..."
-        curl -SL -# -o sensevoice.tar.bz2 https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2
-        echo ">>> 正在解压 SenseVoice 模型..."
-        tar -xvf sensevoice.tar.bz2
-        rm -f sensevoice.tar.bz2
-        rm -f "$SENSE_DIR/model.onnx"
-        ln -sfn "$SENSE_DIR" sensevoice
-        echo ">>> SenseVoice-Small 配置完成。"
-    else
+    local SENSE_DIR="sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17"
+    local SENSE_OLD_DIR="sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17"
+    if [ -f "$SENSE_DIR/model.int8.onnx" ] || [ -f "$SENSE_OLD_DIR/model.int8.onnx" ] || [ -f "sensevoice/model.int8.onnx" ]; then
         echo ">>> SenseVoice-Small 已存在，跳过下载。"
+        return 0
     fi
+
+    local ARCHIVE="sensevoice.tar.bz2"
+    local URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2"
+
+    if [ ! -s "$ARCHIVE" ]; then
+        echo ">>> 正在下载 SenseVoice-Small 模型压缩包 (官方精简版，约 155MB)..."
+        curl -SL -# -o "$ARCHIVE" "$URL"
+    else
+        echo ">>> 检测到本地已存在 $ARCHIVE，直接进行解压..."
+    fi
+
+    echo ">>> 正在解压 SenseVoice 模型..."
+    local EXTRACT_OK=0
+    # 优先使用系统原生 tar (C 语言实现，比 Python 解压 bz2 快数十倍且不消耗 Python 内存)
+    if command -v tar >/dev/null 2>&1; then
+        if tar --exclude="*model.onnx" -xf "$ARCHIVE" 2>/dev/null || tar -xf "$ARCHIVE" 2>/dev/null; then
+            EXTRACT_OK=1
+        fi
+    fi
+
+    # 若系统没有 tar 或 tar 失败，回退至 Python 纯流式单遍解压 (严禁使用 tar.getmembers() 避免 1GB bz2 倒回寻址死循环)
+    if [ $EXTRACT_OK -eq 0 ] && [ -n "$RESOLVED_PYTHON" ]; then
+        "$RESOLVED_PYTHON" -c "
+import tarfile, sys
+kw = {'filter': 'data'} if hasattr(tarfile, 'data_filter') else {}
+try:
+    with tarfile.open('$ARCHIVE', 'r|bz2') as tar:
+        for m in tar:
+            if m.name.endswith('model.onnx'):
+                continue
+            tar.extract(m, '.', **kw)
+    sys.exit(0)
+except Exception as e:
+    sys.exit(1)
+" && EXTRACT_OK=1
+    fi
+
+    if [ $EXTRACT_OK -ne 1 ]; then
+        echo "[错误] 解压 SenseVoice 模型失败！" >&2
+        return 1
+    fi
+
+    rm -f "$ARCHIVE"
+    rm -f "$SENSE_DIR/model.onnx" "$SENSE_OLD_DIR/model.onnx" 2>/dev/null || true
+
+    # 确定解压出的实际目录名
+    local TARGET_DIR=""
+    if [ -d "$SENSE_DIR" ]; then
+        TARGET_DIR="$SENSE_DIR"
+    elif [ -d "$SENSE_OLD_DIR" ]; then
+        TARGET_DIR="$SENSE_OLD_DIR"
+    fi
+
+    # 建立软链接 sensevoice
+    if [ -n "$TARGET_DIR" ] && [ ! -e "sensevoice" ]; then
+        ln -sfn "$TARGET_DIR" sensevoice 2>/dev/null || true
+    fi
+    echo ">>> SenseVoice-Small 配置完成。"
 }
 
 download_vosk_single() {
@@ -129,20 +191,25 @@ setup_aquestalk() {
     mkdir -p "$target_dir"
 
     echo ">>> 正在检查 AquesTalk1 多声线合成库..."
+    if [ -z "$RESOLVED_PYTHON" ]; then
+        echo "[警告] 未找到 Python 解释器，跳过 AquesTalk 自动配置。"
+        return 0
+    fi
+
     if [ -n "$src" ]; then
         if [[ "$src" =~ ^https?:// ]]; then
             echo ">>> 正在从指定 URL 下载 AquesTalk 压缩包: $src ..."
             curl -SL -# -o aquestalk_tmp.zip "$src"
             unzip_file aquestalk_tmp.zip "libs/aquestalk_tmp"
             rm -f aquestalk_tmp.zip
-            python3 -c "from yukkuri.model_downloader import install_aquestalk_from_dir; install_aquestalk_from_dir('libs/aquestalk_tmp')"
+            "$RESOLVED_PYTHON" -c "from yukkuri.model_downloader import install_aquestalk_from_dir; install_aquestalk_from_dir('libs/aquestalk_tmp')"
             rm -rf "libs/aquestalk_tmp"
         elif [ -f "$src" ]; then
             echo ">>> 正在从指定文件安装 AquesTalk 压缩包: $src ..."
-            python3 -c "from yukkuri.model_downloader import install_aquestalk_from_archive; install_aquestalk_from_archive('$src')"
+            "$RESOLVED_PYTHON" -c "from yukkuri.model_downloader import install_aquestalk_from_archive; install_aquestalk_from_archive('$src')"
         elif [ -d "$src" ]; then
             echo ">>> 正在从指定目录导入 AquesTalk: $src ..."
-            python3 -c "from yukkuri.model_downloader import install_aquestalk_from_dir; install_aquestalk_from_dir('$src')"
+            "$RESOLVED_PYTHON" -c "from yukkuri.model_downloader import install_aquestalk_from_dir; install_aquestalk_from_dir('$src')"
         else
             echo "[错误] 指定的 AquesTalk 文件或目录不存在: $src" >&2
             return 1
@@ -150,7 +217,7 @@ setup_aquestalk() {
     else
         # 尝试自动检测本地已存在的安装包或解压目录
         local result
-        result=$(python3 -c "
+        result=$("$RESOLVED_PYTHON" -c "
 from yukkuri.model_downloader import auto_detect_and_install_aquestalk, check_model_status
 status = check_model_status()
 if status['aquestalk']:
@@ -190,7 +257,7 @@ else:
     fi
 
     # 验证最终安装声线
-    python3 -c "
+    "$RESOLVED_PYTHON" -c "
 from yukkuri.config import AppConfig
 cfg = AppConfig()
 voices = cfg.get_available_voices()

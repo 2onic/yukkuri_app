@@ -134,6 +134,7 @@ class AppConfig:
 
         candidates = [
             os.path.join(self.project_root, "sensevoice"),
+            os.path.join(self.project_root, "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17"),
             os.path.join(self.project_root, "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17"),
             os.path.join(self.project_root, "models", "sensevoice"),
             os.path.expanduser("~/.cache/yukkuri/sensevoice"),

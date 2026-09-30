@@ -11,7 +11,7 @@ import urllib.request
 from typing import Callable, Optional, Dict, List, Any
 
 VAD_URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx"
-SENSEVOICE_URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2"
+SENSEVOICE_URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2"
 VOSK_URLS = {
     "zh": "https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip",
     "ja": "https://alphacephei.com/vosk/models/vosk-model-small-ja-0.22.zip",
@@ -25,6 +25,7 @@ def check_model_status(root: Optional[str] = None) -> Dict[str, object]:
     """检查各类模型在本地的存在状态"""
     root = root or get_project_root()
     sense_dir = os.path.join(root, "sensevoice")
+    sense_int8 = os.path.join(root, "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17")
     sense_orig = os.path.join(root, "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17")
 
     from yukkuri.config import AppConfig
@@ -35,6 +36,7 @@ def check_model_status(root: Optional[str] = None) -> Dict[str, object]:
         "vad": os.path.exists(os.path.join(root, "silero_vad.onnx")),
         "sensevoice": (
             (os.path.exists(os.path.join(sense_dir, "model.int8.onnx")) and os.path.exists(os.path.join(sense_dir, "tokens.txt"))) or
+            (os.path.exists(os.path.join(sense_int8, "model.int8.onnx")) and os.path.exists(os.path.join(sense_int8, "tokens.txt"))) or
             (os.path.exists(os.path.join(sense_orig, "model.int8.onnx")) and os.path.exists(os.path.join(sense_orig, "tokens.txt")))
         ),
         "vosk_zh": os.path.exists(os.path.join(root, "model_cn", "am", "final.mdl")) or os.path.exists(os.path.join(root, "model", "am", "final.mdl")),
@@ -82,25 +84,51 @@ def download_sensevoice(
     root: Optional[str] = None,
     progress_callback: Optional[Callable[[int, int], None]] = None
 ) -> str:
-    """下载并解压 SenseVoice-Small 模型 (量化后约 230MB)"""
+    """下载并解压 SenseVoice-Small 模型 (官方精简版约 155MB)"""
     root = root or get_project_root()
     archive_path = os.path.join(root, "sensevoice.tar.bz2")
-    sense_dir_name = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17"
+    sense_dir_name = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17"
+    sense_orig_name = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17"
     extracted_dir = os.path.join(root, sense_dir_name)
 
-    download_file(SENSEVOICE_URL, archive_path, progress_callback=progress_callback)
+    if not os.path.exists(archive_path) or os.path.getsize(archive_path) == 0:
+        download_file(SENSEVOICE_URL, archive_path, progress_callback=progress_callback)
 
-    # 解压
-    with tarfile.open(archive_path, "r:bz2") as tar:
-        tar.extractall(path=root)
+    # 优先使用系统原生 tar 解压以保证极速，避免 Python bzip2 倒回寻址性能瓶颈
+    extracted = False
+    if shutil.which("tar"):
+        try:
+            import subprocess
+            cmd = ["tar", "--exclude=*model.onnx", "-xf", archive_path]
+            res = subprocess.run(cmd, cwd=root, capture_output=True)
+            if res.returncode == 0:
+                extracted = True
+            else:
+                res2 = subprocess.run(["tar", "-xf", archive_path], cwd=root, capture_output=True)
+                if res2.returncode == 0:
+                    extracted = True
+        except Exception:
+            extracted = False
 
-    # 清理压缩包与未量化大模型 (900MB)
+    if not extracted:
+        # 回退至 Python 纯流式单遍解压 (严禁使用 tar.getmembers() 避免 1GB bz2 倒回寻址导致死循环卡顿)
+        kw = {"filter": "data"} if hasattr(tarfile, "data_filter") else {}
+        with tarfile.open(archive_path, "r|bz2") as tar:
+            for member in tar:
+                if member.name.endswith("model.onnx"):
+                    continue
+                tar.extract(member, path=root, **kw)
+
+    # 清理压缩包
     if os.path.exists(archive_path):
         os.remove(archive_path)
 
-    unquantized = os.path.join(extracted_dir, "model.onnx")
-    if os.path.exists(unquantized):
-        os.remove(unquantized)
+    for d in [extracted_dir, os.path.join(root, sense_orig_name)]:
+        unquantized = os.path.join(d, "model.onnx")
+        if os.path.exists(unquantized):
+            os.remove(unquantized)
+
+    actual_dir = extracted_dir if os.path.exists(extracted_dir) else os.path.join(root, sense_orig_name)
 
     # 创建软链接 sensevoice
     symlink_path = os.path.join(root, "sensevoice")
@@ -110,11 +138,11 @@ def download_sensevoice(
         except Exception:
             pass
     try:
-        os.symlink(sense_dir_name, symlink_path)
+        os.symlink(os.path.basename(actual_dir), symlink_path)
     except Exception:
         pass
 
-    return symlink_path
+    return symlink_path if os.path.exists(symlink_path) else actual_dir
 
 def download_vosk(
     lang: str = "zh",

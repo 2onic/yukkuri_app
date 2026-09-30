@@ -200,7 +200,7 @@ class ModelManagerDialog(ctk.CTkToplevel):
             {
                 "key": "sensevoice",
                 "name": "SenseVoice-Small 多语种端到端",
-                "desc": "核心推荐：中/英/日高精度实时识别 (约 230MB)",
+                "desc": "核心推荐：中/英/日高精度实时识别 (官方精简版约 155MB)",
                 "action": lambda cb: download_sensevoice(progress_callback=cb)
             },
             {
