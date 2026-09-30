@@ -171,7 +171,13 @@ class YukkuriApp(ctk.CTk):
         self.vad_label.pack(anchor="w", padx=12, pady=(4, 0))
         self.vad_slider = ctk.CTkSlider(tune_card, from_=200, to=700, number_of_steps=50, command=self._on_vad_changed)
         self.vad_slider.set(350)
-        self.vad_slider.pack(fill="x", padx=12, pady=(2, 12))
+        self.vad_slider.pack(fill="x", padx=12, pady=(2, 10))
+
+        self.max_speech_label = ctk.CTkLabel(tune_card, text="最长单句截断: 6.0 秒", font=ctk.CTkFont(size=13))
+        self.max_speech_label.pack(anchor="w", padx=12, pady=(4, 0))
+        self.max_speech_slider = ctk.CTkSlider(tune_card, from_=2.0, to=15.0, number_of_steps=26, command=self._on_max_speech_changed)
+        self.max_speech_slider.set(6.0)
+        self.max_speech_slider.pack(fill="x", padx=12, pady=(2, 12))
 
         # 分组 4: 监听与虚拟声卡
         opt_card = self._create_card(left_panel, "监听与虚拟麦克风")
@@ -340,6 +346,16 @@ class YukkuriApp(ctk.CTk):
         self.vad_label.configure(text=f"说话停顿断句: {ms} ms")
         if self.pipeline and self.pipeline.config:
             self.pipeline.config.vad_min_silence = ms / 1000.0
+            if self.pipeline.vad:
+                self.pipeline.vad.set_min_silence_duration(ms / 1000.0)
+
+    def _on_max_speech_changed(self, value):
+        sec = round(float(value), 1)
+        self.max_speech_label.configure(text=f"最长单句截断: {sec} 秒")
+        if self.pipeline and self.pipeline.config:
+            self.pipeline.config.vad_max_speech = sec
+            if self.pipeline.vad:
+                self.pipeline.vad.set_max_speech_duration(sec)
 
     def _clear_log(self):
         self.log_box.delete("1.0", "end")
@@ -387,6 +403,7 @@ class YukkuriApp(ctk.CTk):
         device_id = self.device_map.get(selected_label, None)
         speed = int(self.speed_slider.get())
         vad_silence = self.vad_slider.get() / 1000.0
+        vad_max_speech = round(float(self.max_speech_slider.get()), 1)
         enable_dyn_mic = bool(self.switch_dyn_mic.get())
         enable_loopback = bool(self.switch_loopback.get())
 
@@ -400,6 +417,7 @@ class YukkuriApp(ctk.CTk):
             speed=speed,
             device=device_id,
             vad_min_silence=vad_silence,
+            vad_max_speech=vad_max_speech,
             enable_dynamic_mic=enable_dyn_mic,
             enable_loopback=enable_loopback,
         )
@@ -434,6 +452,8 @@ class YukkuriApp(ctk.CTk):
                         vad_model_path=vad_file,
                         sample_rate=config.sample_rate,
                         min_silence_duration=config.vad_min_silence,
+                        min_speech_duration=config.vad_min_speech,
+                        max_speech_duration=config.vad_max_speech,
                         threshold=config.vad_threshold
                     )
                 else:
@@ -442,6 +462,19 @@ class YukkuriApp(ctk.CTk):
                         self.msg_queue.put(("error_model", f"未找到 Vosk 对应语种模型 ({config.lang})，已自动为你打开模型管理器，请点击下载。"))
                         return
                     asr_engine = VoskASR(model_dir, sample_rate=config.sample_rate)
+                    vad_file = config.find_vad_model()
+                    if vad_file:
+                        try:
+                            vad_detector = SileroVAD(
+                                vad_model_path=vad_file,
+                                sample_rate=config.sample_rate,
+                                min_silence_duration=config.vad_min_silence,
+                                min_speech_duration=config.vad_min_speech,
+                                max_speech_duration=config.vad_max_speech,
+                                threshold=config.vad_threshold
+                            )
+                        except Exception:
+                            vad_detector = None
 
                 mic_manager = VirtualMicManager(sink_name=config.target_sink) if config.enable_dynamic_mic else None
 

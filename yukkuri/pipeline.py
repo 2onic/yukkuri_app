@@ -68,53 +68,63 @@ class YukkuriPipeline:
             self.loopback_manager.stop()
             return True
 
+    @property
+    def is_speech_detected(self) -> bool:
+        """当前是否正在检测到持续人声"""
+        if self.vad is not None:
+            return self.vad.is_speech_detected()
+        return False
+
     def process_segment(self, segment):
         """处理一段已完成断句的语音切片"""
         if len(segment) < self.config.sample_rate * self.config.vad_min_sample_duration:
             return
 
-        t0 = time.perf_counter()
-        text = self.asr.decode(segment, sample_rate=self.config.sample_rate)
-        t_asr = (time.perf_counter() - t0) * 1000
+        try:
+            t0 = time.perf_counter()
+            text = self.asr.decode(segment, sample_rate=self.config.sample_rate)
+            t_asr = (time.perf_counter() - t0) * 1000
 
-        if not text:
-            return
+            if not text:
+                return
 
-        t1 = time.perf_counter()
-        koe = self.g2p.convert(text, lang=self.config.lang)
-        t_g2p = (time.perf_counter() - t1) * 1000
+            t1 = time.perf_counter()
+            koe = self.g2p.convert(text, lang=self.config.lang)
+            t_g2p = (time.perf_counter() - t1) * 1000
 
-        if not koe:
-            return
+            if not koe:
+                return
 
-        t2 = time.perf_counter()
-        wav_data = self.tts.synthesize(koe, speed=self.config.speed)
-        t_tts = (time.perf_counter() - t2) * 1000
+            t2 = time.perf_counter()
+            wav_data = self.tts.synthesize(koe, speed=self.config.speed)
+            t_tts = (time.perf_counter() - t2) * 1000
 
-        if not wav_data:
-            return
+            if not wav_data:
+                return
 
-        self.player.play(wav_data)
+            self.player.play(wav_data)
 
-        # 终端友好的信息输出与延迟打点
-        total_time = t_asr + t_g2p + t_tts
-        print(f"\n[识别原文]: {text}")
-        print(f"[油库里音标]: {koe}")
-        print(f"[推流音频]: {len(wav_data)} 字节 -> {self.config.target_sink}  (耗时: ASR {t_asr:.1f}ms | G2P {t_g2p:.1f}ms | TTS {t_tts:.1f}ms | 合计: {total_time:.1f}ms)")
+            # 终端友好的信息输出与延迟打点
+            total_time = t_asr + t_g2p + t_tts
+            print(f"\n[识别原文]: {text}")
+            print(f"[油库里音标]: {koe}")
+            print(f"[推流音频]: {len(wav_data)} 字节 -> {self.config.target_sink}  (耗时: ASR {t_asr:.1f}ms | G2P {t_g2p:.1f}ms | TTS {t_tts:.1f}ms | 合计: {total_time:.1f}ms)")
 
-        if self.on_segment_processed:
-            try:
-                stats = {
-                    "t_asr": t_asr,
-                    "t_g2p": t_g2p,
-                    "t_tts": t_tts,
-                    "total_time": total_time,
-                    "wav_size": len(wav_data),
-                    "manual": False,
-                }
-                self.on_segment_processed(text, koe, stats)
-            except Exception as e:
-                print(f"[UI 回调异常]: {e}", file=sys.stderr)
+            if self.on_segment_processed:
+                try:
+                    stats = {
+                        "t_asr": t_asr,
+                        "t_g2p": t_g2p,
+                        "t_tts": t_tts,
+                        "total_time": total_time,
+                        "wav_size": len(wav_data),
+                        "manual": False,
+                    }
+                    self.on_segment_processed(text, koe, stats)
+                except Exception as e:
+                    print(f"[UI 回调异常]: {e}", file=sys.stderr)
+        except Exception as e:
+            print(f"[切片处理异常]: {e}", file=sys.stderr)
 
     def speak_text(self, text: str):
         """手动输入文本进行合成与推流"""
@@ -176,6 +186,7 @@ class YukkuriPipeline:
         print("=" * 65 + "\n")
 
         self.mic_stream.start()
+        fallback_buffer = []
 
         try:
             while not self.stop_event.is_set():
@@ -189,12 +200,21 @@ class YukkuriPipeline:
                     for seg in segments:
                         self.process_segment(seg)
                 else:
-                    # 无 VAD 模式 (直接交给 ASR 处理，兼容部分传统识别器)
-                    self.process_segment(samples)
+                    # 无 VAD 模式：累积样本切片以达到最低识别时长，避免短切片直接被过滤
+                    fallback_buffer.append(samples)
+                    total_samples = sum(len(x) for x in fallback_buffer)
+                    if total_samples >= int(self.config.sample_rate * 1.5):
+                        combined = np.concatenate(fallback_buffer)
+                        fallback_buffer.clear()
+                        self.process_segment(combined)
 
         except KeyboardInterrupt:
             pass
         finally:
+            if fallback_buffer:
+                combined = np.concatenate(fallback_buffer)
+                fallback_buffer.clear()
+                self.process_segment(combined)
             self.stop()
 
     def stop(self):

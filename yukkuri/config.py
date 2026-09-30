@@ -38,6 +38,7 @@ class AppConfig:
     # VAD 参数
     vad_min_silence: float = 0.35       # 静音断句阈值 (秒)
     vad_min_speech: float = 0.15        # 最短有效语音长度 (秒)
+    vad_max_speech: float = 6.0         # 最长单句强制截断断句 (秒)
     vad_threshold: float = 0.5          # VAD 灵敏度概率 (0.0 ~ 1.0)
     vad_min_sample_duration: float = 0.2 # 忽略过短杂音 (秒)
 

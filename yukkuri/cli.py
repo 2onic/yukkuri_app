@@ -53,6 +53,10 @@ def parse_args() -> argparse.Namespace:
         help="麦克风输入设备索引 ID (默认使用系统默认录音设备)"
     )
     parser.add_argument(
+        "--max-speech-duration", type=float, default=6.0,
+        help="最长连续说话截断保护时间 (秒, 默认: 6.0, 防止持续录音不触发断句)"
+    )
+    parser.add_argument(
         "--no-dynamic-mic", action="store_true",
         help="禁用 pactl 自动动态加载虚拟声卡"
     )
@@ -94,6 +98,7 @@ def main():
         custom_model_path=args.model,
         enable_dynamic_mic=not args.no_dynamic_mic,
         enable_loopback=args.loopback,
+        vad_max_speech=args.max_speech_duration,
     )
 
     # 1. 查找并初始化 AquesTalk 多声线合成引擎
@@ -134,6 +139,7 @@ def main():
                 sample_rate=config.sample_rate,
                 min_silence_duration=config.vad_min_silence,
                 min_speech_duration=config.vad_min_speech,
+                max_speech_duration=config.vad_max_speech,
                 threshold=config.vad_threshold
             )
         except Exception as e:
