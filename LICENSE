@@ -40,10 +40,18 @@ Third-Party Notices and Disclaimers
    - sherpa-onnx: Copyright (c) Next-gen Kaldi, licensed under Apache-2.0.
    - Vosk: Copyright (c) Alpha Cephei Inc., licensed under Apache-2.0.
 
-3. GUI & Python Libraries
-   - CustomTkinter: Copyright (c) 2023 Tom Schimansky, licensed under MIT.
+3. Audio Drivers and Virtual Soundcards
+   - PipeWire: Copyright (c) PipeWire Authors, licensed under MIT / LGPL.
+   - VB-Audio Virtual Cable: Copyright (c) Vincent Burel / VB-Audio Software (https://vb-audio.com/).
+     This repository interacts with VB-Audio Virtual Cable as an external Windows audio driver
+     and does NOT distribute or bundle any VB-Audio installer, binary, or driver.
 
-4. Audio Content Disclaimer
+4. GUI & Python Libraries
+   - CustomTkinter: Copyright (c) 2023 Tom Schimansky, licensed under MIT.
+   - sounddevice / PortAudio: Copyright (c) PortAudio contributors, licensed under MIT.
+   - numpy: Copyright (c) NumPy Developers, licensed under BSD-3-Clause.
+
+5. Audio Content Disclaimer
    - The authors of this software are not responsible for any audio content 
      captured, synthesized, broadcasted, or distributed by users through this tool. 
      Users assume all legal liabilities for their usage.

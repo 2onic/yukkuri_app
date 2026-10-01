@@ -8,38 +8,55 @@
 
 一个跨平台的**实时语音转油库里音效**虚拟麦克风工具（支持 Linux PipeWire 与 Windows WASAPI）。
 
-说出普通话、英语或日语，程序将实时识别，并通过 **AquesTalk1** 引擎实时合成出油库里语音，注入到虚拟麦克风节点中。可在 Discord、QQ、微信、腾讯会议、OBS 等语音开黑或直播软件中直接作为麦克风使用。
+说出普通话、英语或日语，程序将通过轻量高效的本地模型进行实时流式识别，经由经典油库里音素空耳映射调教，由 **AquesTalk1** 引擎实时合成出魔性可爱的油库里语音，并实时推流至系统虚拟麦克风通道。可在 Discord、QQ、微信、腾讯会议、OBS 等软件中直接作为麦克风使用。
 
 ---
 
 ## 核心特性
 
-- **多声线自由切换 (Multi-Voice Switch)**：
-  - 支持 **f1**、**f2**、**f3**、**m1/m2**、**imd1**、**jgr**、**dvd**、**r1**共 9 种声线；
+- **多声线自由切换 (9 种经典声线)**：
+  - 支持 **f1** (女声1)、**f2** (女声2)、**f3** (女声3)、**m1/m2** (男声1/2)、**imd1** (中性音)、**jgr** (机械音)、**dvd** (播音员)、**r1** (机器人)；
   - GUI 界面支持运行中**实时热切换**，命令行支持 `--voice` 选项。
 - **经典油库里空耳调教 (Polyglot G2P)**：
   - **中文**：自动将汉字转为拼音并映射为油库里假名音标（如 *“你好”* -> `にー/はお`，*“我是油库里”* -> `うぉ/しー/ゆっくり`）；
   - **英文**：常用词外来语化 + 音节音译 + 字母拼读（如 *“Hello world”* -> `へろー/わーるど`，*“CPU”* -> `しーぴーゆー`）；
-  - **日文**：原生假名合成，自动纠偏助词读音（`は/へ` -> `わ/え`）。
-  - **中英日数字混排**：无需手动切换语种，支持混合。
-- **异步双缓冲队列推流**：麦克风采集、VAD 检测与 TTS 合成/播放解耦，不阻塞录音。
-- **跨平台虚拟麦克风深度适配 (零系统污染)**：
-  - **Linux**：通过 PipeWire / pactl 原生直连（`pw-play --target yukkuri_sink`），自动动态创建与释放虚拟麦克风（`Yukkuri Virtual Mic`）。
-  - **Windows**：通过 VB-Audio Virtual Cable + WASAPI 专有输出，内置自动采样率协商与 8000Hz Mono -> 48000Hz Stereo 升混重采样，无缝对齐 Discord / OBS (`CABLE Output`)。
+  - **日文**：原生假名合成，自动纠偏助词读音（`は/へ` -> `わ/え`）；
+  - **中英日数字混排**：多语言混合自然发音，无需繁琐切换语种。
+- **智能 VAD 与断句保护**：
+  - 说话停顿自适应切片（支持 200ms ~ 700ms 动态滑块调节）；
+  - **最长单句截断保护 (Max Speech Duration)**：防止长句或高环境底噪下积压超长语音缓冲导致卡顿（默认 6.0s，可调 2.0s ~ 15.0s，且支持手动一键关闭）。
+- **麦克风软件增益 (Mic Software Gain)**：
+  - 支持 0.5x ~ 3.0x（默认 1.0x 标准音量）无级调节，有效解决麦克风拾音偏小或过大的问题。
+- **跨平台物理隔离音频推流**：
+  - **Linux 平台**：完全基于 PipeWire / PulseAudio 原生管道（`pw-play --target yukkuri_sink`），运行时自动通过 `pactl` 动态创建与清理虚拟麦克风（`Yukkuri Virtual Mic`），100% 杜绝 sounddevice 播放通道污染；
+  - **Windows 平台**：适配 VB-Audio Virtual Cable + WASAPI 专有输出，内置自动采样率协商与 8000Hz Mono -> 48000Hz Stereo 双声道升混重采样。
 
 ---
 
 ## 系统架构
 
 ```mermaid
-flowchart LR
-    A[真实麦克风采集] --> B[Silero-VAD 端点检测]
-    B -->|人声片段| C[SenseVoice 语音识别]
-    C -->|中/英/日 文本| D[Polyglot G2P 音标转换]
-    D -->|AquesTalk假名音标| E[AquesTalk1 动态库合成]
-    E -->|8kHz 油库里音频| F[pw-play 管道推流]
-    F --> G[yukkuri_sink 虚拟声卡]
-    G --> H[虚拟麦克风<br>Discord / OBS / 语音软件]
+flowchart TD
+    Mic[物理麦克风录音输入] --> VAD[Silero-VAD 语音活动检测]
+    VAD -->|说话停顿断句 / 强制截断保护| ASR[SenseVoice / Vosk 语音识别]
+    ASR -->|识别文本| G2P[Polyglot G2P 音标调教转换]
+    G2P -->|AquesTalk假名音标| TTS[AquesTalk1 多声线合成引擎]
+    TTS -->|8kHz Mono PCM 音频| Router{音频播放路由分派}
+
+    subgraph Linux [Linux 原生通路]
+        Router -->|平台隔离| PW[pw-play 管道直接推流]
+        PW --> Sink[yukkuri_sink 虚拟声卡节点]
+        Sink --> LoopbackLnx[pw-loopback 可选耳机监听]
+        Sink --> VSource[Yukkuri Virtual Mic<br>供 Discord / OBS 录制输入]
+    end
+
+    subgraph Windows [Windows 专有通路]
+        Router -->|平台隔离| WASAPI[WASAPI 格式自动协商]
+        WASAPI --> Resample[8kHz 单声道 -> 48kHz 立体声升混重采样]
+        Resample --> CableIn[CABLE Input 虚拟播放设备]
+        Resample --> MonitorWin[WASAPI 并发耳机自听监听]
+        CableIn --> CableOut[CABLE Output 虚拟麦克风<br>供 Discord / OBS 录制输入]
+    end
 ```
 
 ---
@@ -49,109 +66,99 @@ flowchart LR
 ### 1. 克隆仓库与安装依赖
 
 ```bash
-git clone git@github.com:2onic/yukkuri_app.git
+git clone https://github.com/2onic/yukkuri_app.git
 cd yukkuri_app
 
-# 安装依赖并注册全局 yukkuri 命令
+# 安装依赖并注册 yukkuri 与 yukkuri-gui 命令行
 pip install -e .
 ```
 
-### 2. 下载语音模型与配置 AquesTalk 声线库
+### 2. 模型下载与 AquesTalk 声线库导入
 
-你可以通过命令行脚本配置，或者在启动 GUI 界面后点击【语音模型与声线库管理】一键导入：
+本项目提供**跨平台一键配置脚本**（支持 Windows 与 Linux，无需 bash/curl/tar 等外部工具）：
 
 ```bash
-# 跨平台一键配置 (Windows / Linux 通用)：下载 Silero-VAD + SenseVoice 并自动扫描 AquesTalk
+# 跨平台推荐（下载 Silero-VAD + SenseVoice 并自动扫描 AquesTalk）：
 python setup_models.py
 
-# 导入 AquesTalk 多声线库 (支持 zip 压缩包、解压目录或 dll/so 库路径；留空则自动扫描)
-python setup_models.py --aquestalk [路径]
+# 导入 AquesTalk 多声线库（支持 zip、解压目录或 dll/so 库路径；留空则自动扫描）：
+python setup_models.py --aquestalk [文件或目录路径]
 
-# 检查当前所有模型就绪状态
+# 查看当前各模型与声线库就绪状态表格：
 python setup_models.py --check
 
 # Linux 环境亦可直接执行脚本：
 ./setup_models.sh
 ```
 
-> **注意（AquesTalk 专有授权）**：
-> `libAquesTalk.so` / `AquesTalk.dll` 属于 **[株式会社アクエスト (Aquest Corp.)](https://www.a-quest.com/)** 的专有财产，本项目不自带打包。
-> 请前往 [AQUEST 官方下载页](https://www.a-quest.com/download.html) 获取相应平台的评价版，然后通过 `python setup_models.py --aquestalk` 或 GUI 向导导入即可解锁全套 9 种声线。
-
-### 3. 运行转换器
-
-程序支持通过桌面图形界面（GUI）或轻量终端命令行运行，且支持自动通过 `pactl` 动态创建与清理虚拟麦克风：
-
-#### 方式 A：启动现代桌面图形界面 (GUI，推荐)
-```bash
-# 直接使用全局 GUI 命令
-yukkuri-gui
-
-# 或者通过参数 / 启动脚本运行
-yukkuri --gui
-./run.sh --gui
-```
-> **GUI 特色**：
-> - 麦克风设备可视化；
-> - 语速与 VAD 停顿断句灵敏度滑块实时调整；
-> - 耳机实时回放监听开关（一键自听合成效果，无需手动执行后台命令）；
-> - 原文识别、假名音标与延迟耗时统计面板；
-> - 快捷文本试听推流框（无需说话即可一键播报）。
-
-#### 方式 B：终端命令行启动 (CLI)
-```bash
-# 全局命令运行
-yukkuri
-
-# 或者通过脚本启动
-./run.sh
-```
-
-现在对着麦克风说话，并在 Discord / QQ / OBS 中将音频输入设备选择为 **`Yukkuri Virtual Mic`** 即可。
-
-> **提示（静态声卡配置）**：如果你希望在系统启动时常驻虚拟麦克风设备，也可以运行可选脚本 `./setup_virtual_mic.sh` 写入 PipeWire 静态配置文件。
+> **关于 AquesTalk 专有授权的特别声明**：  
+> `libAquesTalk.so` (Linux) / `AquesTalk.dll` (Windows) 属于 **[株式会社アクエスト (Aquest Corp.)](https://www.a-quest.com/)** 的专有知识产权，本项目遵循开源许可**严禁且绝不自带打包或二次分发**其动态库文件。  
+> 用户请前往 [AQUEST 官方下载页](https://www.a-quest.com/download.html) 免费获取相应平台的评价版，解压后通过 `python setup_models.py --aquestalk` 或在 GUI 对话框中导入即可解锁全套 9 种声线。
 
 ---
 
-## 进阶参数说明
+### 3. 运行转换器
 
-`yukkuri` 命令与 `./run.sh` 支持以下自定义命令行参数：
+#### 方式 A：启动现代桌面图形界面 (GUI，推荐)
+
+- **Linux**：
+  ```bash
+  ./run.sh --gui
+  # 或直接运行全局命令
+  yukkuri-gui
+  ```
+- **Windows**：
+  - 直接双击运行目录下的 **`run.bat`**；
+  - 或在命令行中运行：`python -m yukkuri.cli --gui`
+
+#### 方式 B：终端命令行启动 (CLI)
+
+```bash
+# Linux
+./run.sh
+./run.sh --loopback --voice f2
+
+# Windows
+python -m yukkuri.cli
+python -m yukkuri.cli --loopback --voice f2
+```
+
+---
+
+## Windows 平台使用指南
+
+1. **安装虚拟声卡驱动**：  
+   前往 [VB-Audio Virtual Cable 官网](https://vb-audio.com/Cable/) 下载安装免费版驱动（安装完成后可能需要重启电脑一次）。
+2. **下载模型与导入声线**：  
+   在终端运行 `python setup_models.py`，并将下载的 `AquesTalk.dll` 或 `aqtk1-win` 目录导入。
+3. **启动程序与语音软件配置**：  
+   - 双击运行 `run.bat`，点击 **【启动转换器】**；
+   - 打开 Discord、微信、QQ、腾讯会议、OBS 等语音或直播软件；
+   - 将软件中的**麦克风输入设备**选为：**`CABLE Output (VB-Audio Virtual Cable)`** 即可。
+
+---
+
+## 进阶命令行参数说明
+
+`yukkuri` 命令与 `./run.sh` 完整支持以下参数：
 
 | 参数 | 默认值 | 作用说明 |
 | :--- | :--- | :--- |
-| `--engine` | `sensevoice` | 识别引擎：`sensevoice`（默认高精度端到端）或 `vosk`（轻量传统） |
+| `--engine` | `sensevoice` | 识别引擎：`sensevoice`（默认端到端高精度）或 `vosk`（轻量传统离线） |
 | `--voice` | `f1` | 油库里声线：`f1`, `f2`, `f3`, `m1`, `m2`, `imd1`, `jgr`, `dvd`, `r1` |
-| `--speed` | `100` | 油库里说话语速（推荐范围: `70` ~ `160`） |
-| `--target` | `yukkuri_sink` | PipeWire 推流目标 sink 名称 |
-| `--loopback`, `--monitor` | 关闭 | 启动耳机实时回放监听（将虚拟麦克风声音自动回放至默认耳机/扬声器，退出时自动清理） |
-| `--device` | 系统默认 | 指定输入的实体麦克风设备 ID |
-| `--list-devices` | - | 列出当前系统的所有音频输入输出设备及其 ID |
-| `--lang` | `zh` | 发音/模型语种（SenseVoice 自动支持多语种；Vosk 模式下切换模型） |
-
-#### 常用命令示例：
-
-```bash
-# 查看所有输入设备编号
-./run.sh --list-devices
-
-# 启动并开启耳机实时自听回放
-./run.sh --loopback
-
-# 使用女声2 (f2) 运行
-./run.sh --voice f2
-
-# 使用男声1 (m1) 运行
-./run.sh --voice m1
-
-# 指定麦克风设备 ID（例如 14）并调快语速至 120
-./run.sh --device 14 --speed 120
-
-# 切换为日文语境发音
-./run.sh --lang ja
-
-# 切换为轻量 Vosk 引擎
-./run.sh --engine vosk --lang zh
-```
+| `--speed` | `100` | 说话语速百分比（50 ~ 300，推荐 `80` ~ `140`） |
+| `--mic-gain` | `1.0` | 麦克风软件增益倍数（`0.5` ~ `3.0`） |
+| `--max-speech-duration` | `6.0` | 最长单句强制截断保护时长（秒，设为 0 或负数则关闭截断） |
+| `--no-max-speech` | - | 手动关闭最长单句截断保护 |
+| `--loopback`, `--monitor` | 关闭 | 开启本地耳机实时回放自听监听 |
+| `--device` | 系统默认 | 输入麦克风设备 ID |
+| `--output-device` | 系统默认 | 目标播放设备 ID（Windows 默认自动匹配 `CABLE Input`） |
+| `--monitor-device` | 系统默认 | 本地回放监听输出设备 ID（耳机/扬声器） |
+| `--lang` | `zh` | 发音/模型主语种（`zh`, `ja`, `en`；SenseVoice 原生支持多语种混读） |
+| `--target` | `yukkuri_sink` | Linux PipeWire 输出目标 Sink 名称 |
+| `--no-dynamic-mic` | - | 禁用 Linux pactl 自动动态加载/卸载虚拟声卡 |
+| `--list-devices` | - | 列出当前系统的所有音频输入输出设备及其编号并退出 |
+| `--gui` | - | 启动桌面图形控制界面 |
 
 ---
 
@@ -161,9 +168,11 @@ yukkuri
    - 本项目本身**不打包、不分发任何 AquesTalk 二进制专有动态库**；
    - 语音合成引擎及动态库（`libAquesTalk.so` / `AquesTalk.dll`）属于 **[株式会社アクエスト (Aquest Corp.)](https://www.a-quest.com/)** 的版权财产，不受本项目 MIT 协议管辖；
    - 个人非商业用途请遵守官方使用条款。如需商业用途，请向 AQUEST 申请正式商业授权。
-2. **开源组件与模型**：
+2. **开源组件与依赖**：
    - SenseVoice、sherpa-onnx、Vosk 遵循 Apache-2.0 开源协议；
-   - Silero VAD、CustomTkinter 遵循 MIT 开源协议。
+   - Silero VAD、CustomTkinter 遵循 MIT 开源协议；
+   - PipeWire 遵循 MIT / LGPL 开源协议；
+   - VB-Audio Virtual Cable 为 Vincent Burel / VB-Audio Software 的独立声卡驱动产品。
 3. **免责声明**：
    - 本工具仅供个人娱乐、语音技术交流及二创研究使用；
-   - 使用者通过本工具采集、合成与广播的任何音频内容，其合规性与法律责任由使用者自行承担，请勿用于侵犯他人合法权益或违法违规场景。
+   - 使用者通过本工具采集、合成与广播的任何音频内容，其合规性与法律责任由使用者自行承担，严禁用于侵犯他人合法权益或违法违规场景。
