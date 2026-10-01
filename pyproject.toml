@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "yukkuri-app"
 version = "0.3.0"
-description = "Linux PipeWire Real-time Voice Changer to classic Yukkuri (AquesTalk1) audio"
+description = "Real-time Voice Transformer to Yukkuri (AquesTalk1) audio"
 readme = "README.md"
 authors = [
     { name = "2onic" }

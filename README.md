@@ -10,6 +10,10 @@
 
 说出普通话、英语或日语，程序将通过轻量高效的本地模型进行实时流式识别，经由经典油库里音素空耳映射调教，由 **AquesTalk1** 引擎实时合成出魔性可爱的油库里语音，并实时推流至系统虚拟麦克风通道。可在 Discord、QQ、微信、腾讯会议、OBS 等软件中直接作为麦克风使用。
 
+> [!WARNING]
+> **关于 Windows 兼容模式的声明**：  
+> 该工具**主要针对 Linux (PipeWire) 开发与优化，不保证 Windows 兼容模式能完全正常工作**。Windows 支持属于实验性质，依赖第三方 VB-CABLE 驱动与 WASAPI 升混，不同系统版本和声卡硬件可能存在差异。
+
 ---
 
 ## 核心特性
@@ -126,6 +130,9 @@ python -m yukkuri.cli --loopback --voice f2
 ---
 
 ## Windows 平台使用指南
+
+> [!WARNING]
+> **兼容性声明**：该工具主要针对 Linux 环境开发与测试，Windows 兼容模式属于实验性功能，**不保证在所有 Windows 版本或音频硬件上能完全正常工作**。
 
 1. **安装虚拟声卡驱动**：  
    前往 [VB-Audio Virtual Cable 官网](https://vb-audio.com/Cable/) 下载安装免费版驱动（安装完成后可能需要重启电脑一次）。
