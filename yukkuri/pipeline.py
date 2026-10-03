@@ -7,6 +7,7 @@ import sys
 import queue
 import threading
 from typing import Optional
+import numpy as np
 
 from yukkuri.config import AppConfig
 from yukkuri.asr.base import BaseASREngine

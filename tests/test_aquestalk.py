@@ -52,12 +52,15 @@ class TestAquesTalkMultiVoice(unittest.TestCase):
 
     def test_dev_key_options_passed(self):
         """测试 AquesTalk1Engine 能够正确接收 dev_key 与 usr_key 配置"""
-        engine = AquesTalk1Engine(
-            voice="f1",
-            voice_resolver=self.config.find_aquestalk_library,
-            dev_key="TEST_DEV_KEY",
-            usr_key="TEST_USR_KEY",
-        )
+        import io
+        import contextlib
+        with contextlib.redirect_stderr(io.StringIO()):
+            engine = AquesTalk1Engine(
+                voice="f1",
+                voice_resolver=self.config.find_aquestalk_library,
+                dev_key="TEST_DEV_KEY",
+                usr_key="TEST_USR_KEY",
+            )
         self.assertEqual(engine.dev_key, "TEST_DEV_KEY")
         self.assertEqual(engine.usr_key, "TEST_USR_KEY")
 

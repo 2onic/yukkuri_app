@@ -189,8 +189,9 @@ class AppConfig:
         ]
         for path in candidates:
             int8_file = os.path.join(path, "model.int8.onnx")
+            onnx_file = os.path.join(path, "model.onnx")
             tokens_file = os.path.join(path, "tokens.txt")
-            if os.path.exists(int8_file) and os.path.exists(tokens_file):
+            if (os.path.exists(int8_file) or os.path.exists(onnx_file)) and os.path.exists(tokens_file):
                 return os.path.abspath(path)
         return None
 

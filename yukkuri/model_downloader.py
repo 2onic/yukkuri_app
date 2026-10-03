@@ -35,9 +35,9 @@ def check_model_status(root: Optional[str] = None) -> Dict[str, object]:
     return {
         "vad": os.path.exists(os.path.join(root, "silero_vad.onnx")),
         "sensevoice": (
-            (os.path.exists(os.path.join(sense_dir, "model.int8.onnx")) and os.path.exists(os.path.join(sense_dir, "tokens.txt"))) or
-            (os.path.exists(os.path.join(sense_int8, "model.int8.onnx")) and os.path.exists(os.path.join(sense_int8, "tokens.txt"))) or
-            (os.path.exists(os.path.join(sense_orig, "model.int8.onnx")) and os.path.exists(os.path.join(sense_orig, "tokens.txt")))
+            ((os.path.exists(os.path.join(sense_dir, "model.int8.onnx")) or os.path.exists(os.path.join(sense_dir, "model.onnx"))) and os.path.exists(os.path.join(sense_dir, "tokens.txt"))) or
+            ((os.path.exists(os.path.join(sense_int8, "model.int8.onnx")) or os.path.exists(os.path.join(sense_int8, "model.onnx"))) and os.path.exists(os.path.join(sense_int8, "tokens.txt"))) or
+            ((os.path.exists(os.path.join(sense_orig, "model.int8.onnx")) or os.path.exists(os.path.join(sense_orig, "model.onnx"))) and os.path.exists(os.path.join(sense_orig, "tokens.txt")))
         ),
         "vosk_zh": os.path.exists(os.path.join(root, "model_cn", "am", "final.mdl")) or os.path.exists(os.path.join(root, "model", "am", "final.mdl")),
         "vosk_ja": os.path.exists(os.path.join(root, "model_ja", "am", "final.mdl")),

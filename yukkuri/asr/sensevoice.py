@@ -26,10 +26,12 @@ class SenseVoiceASR(BaseASREngine):
             raise ImportError("缺少 sherpa_onnx 依赖，无法加载 SenseVoice 引擎")
 
         model_file = os.path.join(model_dir, "model.int8.onnx")
+        if not os.path.exists(model_file):
+            model_file = os.path.join(model_dir, "model.onnx")
         tokens_file = os.path.join(model_dir, "tokens.txt")
 
         if not (os.path.exists(model_file) and os.path.exists(tokens_file)):
-            raise FileNotFoundError(f"SenseVoice 目录下缺少 model.int8.onnx 或 tokens.txt: {model_dir}")
+            raise FileNotFoundError(f"SenseVoice 目录下缺少 model.int8.onnx / model.onnx 或 tokens.txt: {model_dir}")
 
         self.recognizer = sherpa_onnx.OfflineRecognizer.from_sense_voice(
             model=model_file,

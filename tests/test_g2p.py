@@ -34,6 +34,15 @@ class TestPolyglotG2P(unittest.TestCase):
         result = text_to_yukkuri_polyglot("1234", current_lang="en")
         self.assertEqual(result, "わん/つー/すりー/ふぉー")
 
+    def test_chinese_special_syllables_coverage(self):
+        """测试 v/ü 音节 (女人, 绿色, 掠夺, 虐待) 以及特殊音节 (哎哟, 嗯) 正确转写假名"""
+        self.assertEqual(text_to_yukkuri_polyglot("女人"), "にゅー/れん")
+        self.assertEqual(text_to_yukkuri_polyglot("绿色"), "りゅー/せ")
+        self.assertEqual(text_to_yukkuri_polyglot("掠夺"), "りゅえ/どぅお")
+        self.assertEqual(text_to_yukkuri_polyglot("虐待"), "にゅえ/だい")
+        self.assertEqual(text_to_yukkuri_polyglot("哎哟"), "あい/よー")
+        self.assertEqual(text_to_yukkuri_polyglot("嗯"), "ん")
+
     def test_custom_rule(self):
         g2p = PolyglotG2P()
         g2p.add_custom_rule("bilibili", "びりびり")
