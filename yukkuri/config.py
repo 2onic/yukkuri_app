@@ -6,6 +6,32 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict
 
+def _load_env_file():
+    """轻量读取项目根目录或当前工作目录下的 .env 环境变量文件 (零外部依赖)"""
+    candidate_paths = [
+        os.path.join(os.getcwd(), ".env"),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env")),
+    ]
+    for p in candidate_paths:
+        if os.path.isfile(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith("#"):
+                            continue
+                        if "=" in line:
+                            k, v = line.split("=", 1)
+                            k = k.strip()
+                            v = v.strip().strip("'\"")
+                            if k and k not in os.environ:
+                                os.environ[k] = v
+            except Exception:
+                pass
+            break
+
+_load_env_file()
+
 AQUESTALK_VOICES = {
     "f1": "女声1",
     "f2": "女声2",

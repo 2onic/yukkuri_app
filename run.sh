@@ -3,6 +3,13 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# 自动加载本地私有 .env 环境变量文件
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    set -a
+    . "$SCRIPT_DIR/.env"
+    set +a
+fi
+
 # 智能探测可用 Python 解释器
 # 1. 优先使用环境变量指定的 PYTHON_CMD
 if [ -n "$PYTHON_CMD" ] && [ -x "$PYTHON_CMD" ]; then
