@@ -1,16 +1,52 @@
 """
 统一配置管理与路径解析模块
+支持源码开发目录与 pip 全局安装环境 (XDG/AppData 用户目录隔离) 自适应切换
 """
 
 import os
+import sys
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict
 
+
+def get_default_data_dir() -> str:
+    """
+    获取全局模型与数据存储目录：
+    1. 优先读取环境变量 YUKKURI_DATA_DIR 或 YUKKURI_MODELS_DIR
+    2. 如果当前运行在源码开发仓库中 (存在 pyproject.toml 且目录可写)，优先使用项目根目录
+    3. 否则 (如 pip install . 安装至 site-packages)，使用系统级用户数据目录，避免权限不足或污染包目录：
+       - Linux/macOS: ~/.local/share/yukkuri (符合 XDG Base Directory 规范)
+       - Windows: %LOCALAPPDATA%/yukkuri 或 %APPDATA%/yukkuri
+    """
+    env_dir = os.environ.get("YUKKURI_DATA_DIR") or os.environ.get("YUKKURI_MODELS_DIR")
+    if env_dir:
+        return os.path.abspath(env_dir)
+
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    is_source_repo = os.path.exists(os.path.join(repo_root, "pyproject.toml"))
+    if is_source_repo and os.access(repo_root, os.W_OK):
+        return repo_root
+
+    if sys.platform == "win32":
+        base_dir = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or os.path.expanduser("~")
+        data_dir = os.path.join(base_dir, "yukkuri")
+    else:
+        xdg_data = os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share"))
+        data_dir = os.path.join(xdg_data, "yukkuri")
+
+    try:
+        os.makedirs(data_dir, exist_ok=True)
+    except Exception:
+        pass
+    return data_dir
+
+
 def _load_env_file():
-    """轻量读取项目根目录或当前工作目录下的 .env 环境变量文件 (零外部依赖)"""
+    """轻量读取项目根目录、工作目录或用户数据目录下的 .env 环境变量文件 (零外部依赖)"""
     candidate_paths = [
         os.path.join(os.getcwd(), ".env"),
         os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env")),
+        os.path.join(get_default_data_dir(), ".env"),
     ]
     for p in candidate_paths:
         if os.path.isfile(p):
@@ -30,6 +66,7 @@ def _load_env_file():
                 pass
             break
 
+
 _load_env_file()
 
 AQUESTALK_VOICES = {
@@ -38,47 +75,54 @@ AQUESTALK_VOICES = {
     "f3": "女声3",
     "m1": "男声1",
     "m2": "男声2",
-    "imd1": "中性音",
-    "jgr": "机械音",
-    "dvd": "播音员",
-    "r1": "机器人",
+    "r1": "机器人声",
+    "dvd": "DVD声",
+    "imd1": "中性声",
+    "jgr": "老者声",
 }
+
 
 @dataclass
 class AppConfig:
-    # 基础引擎选项
-    engine: str = "sensevoice"          # "sensevoice" 或 "vosk"
-    lang: str = "zh"                    # "zh", "cn", "ja", "en"
-    voice: str = "f1"                   # 默认声线: "f1", 可选 "f2", "f3", "m1", "m2", "imd1", "jgr", "dvd", "r1"
-    speed: int = 100                    # 语速 50 ~ 300
-    target_sink: str = "yukkuri_sink"   # 输出虚拟 Sink 名称
-    source_name: str = "yukkuri_source" # 虚拟输入 Source 名称 (供录音或回放监听捕获)
-    enable_loopback: bool = False       # 是否开启自身回放监听 (耳机/扬声器实时听到油库里语音)
-    device: Optional[int] = None        # 麦克风输入设备 ID (None 为系统默认)
-    output_device: Optional[int] = None # Windows 目标播放设备 ID (默认自动寻找 CABLE Input)
-    monitor_device: Optional[int] = None # Windows 耳机监听设备 ID (默认使用系统默认输出)
+    # 语音引擎选择: "sensevoice" 或 "vosk"
+    engine: str = "sensevoice"
 
-    # 音频参数
+    # 识别语言: "zh", "ja", "en"
+    lang: str = "zh"
+
+    # AquesTalk 声线代号 (默认 "f1")
+    voice: str = "f1"
+
+    # 语速调节 (百分比, 默认 100)
+    speed: int = 100
+
+    # 音频输入输出参数
     sample_rate: int = 16000
     channels: int = 1
-    mic_gain: float = 1.0               # 麦克风输入增益倍数 (默认 1.0)
+    device: Optional[int] = None            # 麦克风硬件设备索引
+    output_device: Optional[int] = None     # 目标播放设备索引 (Windows WASAPI/VB-CABLE)
+    monitor_device: Optional[int] = None    # 本地监听输出设备索引 (耳机)
+    mic_gain: float = 1.0                   # 麦克风输入软件增益倍数 (0.1 ~ 5.0)
 
-    # VAD 参数
-    vad_min_silence: float = 0.35       # 静音断句阈值 (秒)
-    vad_min_speech: float = 0.15        # 最短有效语音长度 (秒)
-    vad_max_speech: float = 6.0         # 最长单句强制截断断句 (秒, <=0 表示关闭截断)
-    vad_enable_max_speech: bool = True  # 是否启用最长单句强制截断保护
-    vad_threshold: float = 0.5          # VAD 灵敏度概率 (0.0 ~ 1.0)
-    vad_min_sample_duration: float = 0.2 # 忽略过短杂音 (秒)
+    # 虚拟声卡名称 (Linux PipeWire 节点名)
+    target_sink: str = "yukkuri_sink"
+    source_name: str = "yukkuri_source"
 
-    def get_effective_max_speech_duration(self) -> float:
-        """获取实际生效的截断保护时长 (若未启用则返回 0.0)"""
-        return self.vad_max_speech if self.vad_enable_max_speech and self.vad_max_speech > 0 else 0.0
+    # Silero-VAD 端点检测参数
+    vad_threshold: float = 0.5
+    vad_min_silence: float = 0.3            # 静音截断判定时长 (秒)
+    vad_min_speech: float = 0.15            # 起始有效语音最短时长 (秒)
+    vad_max_speech: float = 6.0             # 单句语音强制截断上限 (秒)
+    vad_enable_max_speech: bool = True      # 是否启用单句强制截断
+    vad_min_sample_duration: float = 0.3    # 送入 ASR 的最短有效语音切片时长 (秒)
 
-    # 性能与调试
+    # 性能配置
     num_threads: int = 4
+
+    # 增强选项
+    enable_loopback: bool = False
     verbose: bool = False
-    enable_dynamic_mic: bool = True     # 自动通过 pactl 管理虚拟声卡
+    enable_dynamic_mic: bool = True         # 退出时是否自动释放虚拟声卡
 
     # 自定义模型与声线库路径 (若指定则覆盖自动搜索)
     custom_model_path: Optional[str] = None
@@ -88,15 +132,20 @@ class AppConfig:
     dev_key: Optional[str] = field(default_factory=lambda: os.environ.get("AQUESTALK_DEV_KEY", None))
     usr_key: Optional[str] = field(default_factory=lambda: os.environ.get("AQUESTALK_USR_KEY", None))
 
-    # 项目根目录路径（自动计算）
-    project_root: str = field(default_factory=lambda: os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+    # 项目根目录路径（自动计算，非开发环境落入用户数据目录）
+    project_root: str = field(default_factory=get_default_data_dir)
+
+    def get_effective_max_speech_duration(self) -> float:
+        """获取当前有效的最长切片时长"""
+        if self.vad_enable_max_speech and self.vad_max_speech > 0.0:
+            return float(self.vad_max_speech)
+        return 0.0
 
     def find_aquestalk_library(self, voice: Optional[str] = None) -> Optional[str]:
         """
         按声线与平台搜索对应的 AquesTalk 动态库 (Linux .so / Windows .dll)
         :param voice: 声线名称 (如 "f1", "f2", "m1" 等)，若未指定则使用 self.voice
         """
-        import sys
         target_voice = (voice or self.voice or "f1").lower()
         is_win = sys.platform == "win32"
 
@@ -124,14 +173,22 @@ class AppConfig:
                 self.custom_aquestalk_dir,
             ])
 
-        search_dirs.extend([
-            os.path.join(self.project_root, "libs", "aquestalk", "lib64", target_voice),
-            os.path.join(self.project_root, "libs", "aquestalk", target_voice),
-            os.path.join(self.project_root, "libs", "lib64", target_voice),
-            os.path.join(self.project_root, "libs", target_voice),
-            os.path.join(self.project_root, "libs", "aquestalk"),
-            os.path.join(self.project_root, "libs"),
-        ])
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        candidate_roots = list(dict.fromkeys([
+            self.project_root,
+            repo_root,
+            os.path.expanduser("~/.local/share/yukkuri"),
+        ]))
+
+        for r in candidate_roots:
+            search_dirs.extend([
+                os.path.join(r, "libs", "aquestalk", "lib64", target_voice),
+                os.path.join(r, "libs", "aquestalk", target_voice),
+                os.path.join(r, "libs", "lib64", target_voice),
+                os.path.join(r, "libs", target_voice),
+                os.path.join(r, "libs", "aquestalk"),
+                os.path.join(r, "libs"),
+            ])
 
         home = os.path.expanduser("~")
         search_dirs.extend([
@@ -144,6 +201,7 @@ class AppConfig:
 
         if target_voice == "f1":
             search_dirs.append(self.project_root)
+            search_dirs.append(repo_root)
 
         for d in search_dirs:
             if not os.path.exists(d):
@@ -165,9 +223,13 @@ class AppConfig:
 
     def find_vad_model(self) -> Optional[str]:
         """按优先级搜索 silero_vad.onnx"""
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         candidates = [
             os.path.join(self.project_root, "silero_vad.onnx"),
             os.path.join(self.project_root, "models", "silero_vad.onnx"),
+            os.path.join(repo_root, "silero_vad.onnx"),
+            os.path.join(repo_root, "models", "silero_vad.onnx"),
+            os.path.expanduser("~/.local/share/yukkuri/silero_vad.onnx"),
             os.path.expanduser("~/.cache/yukkuri/silero_vad.onnx"),
         ]
         for path in candidates:
@@ -180,19 +242,27 @@ class AppConfig:
         if self.custom_model_path and os.path.exists(self.custom_model_path):
             return os.path.abspath(self.custom_model_path)
 
-        candidates = [
-            os.path.join(self.project_root, "sensevoice"),
-            os.path.join(self.project_root, "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17"),
-            os.path.join(self.project_root, "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17"),
-            os.path.join(self.project_root, "models", "sensevoice"),
-            os.path.expanduser("~/.cache/yukkuri/sensevoice"),
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        roots = list(dict.fromkeys([
+            self.project_root,
+            repo_root,
+            os.path.expanduser("~/.local/share/yukkuri"),
+            os.path.expanduser("~/.cache/yukkuri"),
+        ]))
+        subnames = [
+            "sensevoice",
+            "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17",
+            "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17",
+            os.path.join("models", "sensevoice"),
         ]
-        for path in candidates:
-            int8_file = os.path.join(path, "model.int8.onnx")
-            onnx_file = os.path.join(path, "model.onnx")
-            tokens_file = os.path.join(path, "tokens.txt")
-            if (os.path.exists(int8_file) or os.path.exists(onnx_file)) and os.path.exists(tokens_file):
-                return os.path.abspath(path)
+        for r in roots:
+            for s in subnames:
+                p = os.path.join(r, s)
+                int8_file = os.path.join(p, "model.int8.onnx")
+                onnx_file = os.path.join(p, "model.onnx")
+                tokens_file = os.path.join(p, "tokens.txt")
+                if (os.path.exists(int8_file) or os.path.exists(onnx_file)) and os.path.exists(tokens_file):
+                    return os.path.abspath(p)
         return None
 
     def find_vosk_model_dir(self) -> Optional[str]:
@@ -200,6 +270,13 @@ class AppConfig:
         if self.custom_model_path and os.path.exists(self.custom_model_path):
             return os.path.abspath(self.custom_model_path)
 
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        roots = list(dict.fromkeys([
+            self.project_root,
+            repo_root,
+            os.path.expanduser("~/.local/share/yukkuri"),
+            os.path.expanduser("~/.cache/yukkuri"),
+        ]))
         mapping = {
             "zh": ["model_cn", "model", "models/model_cn", "models/model"],
             "cn": ["model_cn", "model", "models/model_cn", "models/model"],
@@ -207,8 +284,9 @@ class AppConfig:
             "en": ["model_en", "model", "models/model_en", "models/model"]
         }
         candidates = mapping.get(self.lang.lower(), ["model"])
-        for c in candidates:
-            p = os.path.join(self.project_root, c)
-            if os.path.exists(p):
-                return os.path.abspath(p)
+        for r in roots:
+            for c in candidates:
+                p = os.path.join(r, c)
+                if os.path.exists(p):
+                    return os.path.abspath(p)
         return None

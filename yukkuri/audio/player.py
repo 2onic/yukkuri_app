@@ -1,7 +1,7 @@
 """
 音频推流播放器模块，支持平台物理隔离：
-- Linux: 严格使用原生 PipeWire (pw-play) 或 PulseAudio (paplay)，0 丢包推流至 yukkuri_sink
-- Windows: 使用 WASAPI/sounddevice，自动重采样至声卡采样率并升混为立体声推流至 VB-CABLE Input，支持双路耳机监听
+- Linux: 严格使用原生 PipeWire (pw-play) 或 PulseAudio (paplay)，0 丢包推流至 yukkuri_sink，并具备虚拟节点就绪检查防止物理扬声器外放
+- Windows: 使用 WASAPI/sounddevice，长连接 OutputStream 保持低延迟避免爆音，自动抗混叠重采样并升混为立体声推流至 VB-CABLE Input，支持双路耳机监听
 """
 
 import sys
@@ -15,6 +15,8 @@ import wave
 from typing import Optional, Tuple
 import numpy as np
 import sounddevice as sd
+
+from yukkuri.audio.resample import resample_audio
 
 
 class BaseAudioPlayer(abc.ABC):
@@ -53,6 +55,23 @@ class LinuxPipeWirePlayer(BaseAudioPlayer):
         if wav_data:
             self.queue.put((wav_data, desc))
 
+    def _is_sink_available(self) -> bool:
+        """检查目标虚拟声卡是否存在于系统中"""
+        if not self.target_sink:
+            return True
+        if shutil.which("pactl"):
+            try:
+                res = subprocess.run(
+                    ["pactl", "list", "short", "sinks"],
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                return self.target_sink in res.stdout
+            except Exception:
+                pass
+        return True
+
     def _worker(self):
         has_pw_play = shutil.which("pw-play") is not None
 
@@ -64,6 +83,11 @@ class LinuxPipeWirePlayer(BaseAudioPlayer):
 
             wav_data, desc = item
             try:
+                # 检查虚拟声卡节点是否存在，避免向默认物理扬声器漏音
+                if self.target_sink and not self._is_sink_available():
+                    print(f"[播放警告] 目标虚拟声卡 '{self.target_sink}' 不存在或未就绪，已阻止向系统默认物理扬声器推流以防止隐私泄露。", file=sys.stderr)
+                    continue
+
                 if has_pw_play:
                     cmd = ["pw-play"]
                     if self.target_sink:
@@ -107,45 +131,90 @@ class WindowsWASAPIPlayer(BaseAudioPlayer):
     """
     Windows 专有推流播放器：
     利用 sounddevice 异步向虚拟声卡 (如 VB-CABLE Input) 推流。
-    针对 Windows WASAPI 驱动特性，自动将 AquesTalk 的 8000Hz 1ch 采样数据
-    自适应重采样为目标设备的推荐采样率（如 48000Hz/44100Hz）并升混为立体声 (2ch)，
-    并支持向用户的物理耳机/音箱设备进行双路并行推流监听。
+    针对 Windows WASAPI 驱动特性：
+    - 采用长连接保持 OutputStream，避免每句频繁启闭驱动产生爆音与性能抖动
+    - 自动抗混叠重采样至声卡采样率并升混为立体声 (2ch)
+    - 优先匹配 WASAPI HostAPI 设备，并具备默认扬声器防外放保护
+    - 支持向用户的物理耳机/音箱设备进行双路并行推流监听
     """
 
     def __init__(
         self,
         output_device: Optional[int] = None,
         monitor_device: Optional[int] = None,
-        enable_monitor: bool = False
+        enable_monitor: bool = False,
+        allow_default_speaker: bool = False
     ):
         self.output_device = output_device
         self.monitor_device = monitor_device
         self.enable_monitor = enable_monitor
+        self.allow_default_speaker = allow_default_speaker
         self.queue: queue.Queue = queue.Queue()
         self.running = True
+
+        self._stream_out: Optional[sd.OutputStream] = None
+        self._stream_out_params: Optional[Tuple[Optional[int], int, int]] = None
+        self._stream_mon: Optional[sd.OutputStream] = None
+        self._stream_mon_params: Optional[Tuple[Optional[int], int, int]] = None
+        self._stream_lock = threading.Lock()
+
         self._worker_thread = threading.Thread(target=self._worker, daemon=True)
         self._worker_thread.start()
 
     def set_monitor(self, enable: bool, device_id: Optional[int] = None):
         """动态开启/关闭本地耳机回放监听"""
-        self.enable_monitor = enable
-        if device_id is not None:
-            self.monitor_device = device_id
+        with self._stream_lock:
+            self.enable_monitor = enable
+            if device_id is not None:
+                self.monitor_device = device_id
+            if not enable and self._stream_mon is not None:
+                try:
+                    self._stream_mon.stop()
+                    self._stream_mon.close()
+                except Exception:
+                    pass
+                self._stream_mon = None
+                self._stream_mon_params = None
 
     def set_output_device(self, device_id: Optional[int]):
         """动态设置输出目标设备"""
-        self.output_device = device_id
+        with self._stream_lock:
+            if self.output_device != device_id:
+                self.output_device = device_id
+                if self._stream_out is not None:
+                    try:
+                        self._stream_out.stop()
+                        self._stream_out.close()
+                    except Exception:
+                        pass
+                    self._stream_out = None
+                    self._stream_out_params = None
 
     @staticmethod
     def find_default_cable_input() -> Optional[int]:
-        """智能寻找 VB-CABLE Input 设备的索引 ID"""
+        """智能寻找 VB-CABLE Input 设备的索引 ID (优先匹配 WASAPI HostAPI)"""
         try:
             devices = sd.query_devices()
+            wasapi_api_idx = None
+            try:
+                hostapis = sd.query_hostapis()
+                for idx, api in enumerate(hostapis):
+                    if "wasapi" in api.get("name", "").lower():
+                        wasapi_api_idx = idx
+                        break
+            except Exception:
+                pass
+
+            best_match = None
             for idx, dev in enumerate(devices):
                 if dev.get("max_output_channels", 0) > 0:
                     name = dev.get("name", "").lower()
                     if "cable input" in name or "vb-audio point" in name:
-                        return idx
+                        if wasapi_api_idx is not None and dev.get("hostapi") == wasapi_api_idx:
+                            return idx
+                        if best_match is None:
+                            best_match = idx
+            return best_match
         except Exception:
             pass
         return None
@@ -157,7 +226,7 @@ class WindowsWASAPIPlayer(BaseAudioPlayer):
         device_id: Optional[int]
     ) -> Tuple[np.ndarray, int, int]:
         """
-        为指定输出设备适配采样率与声道数 (自动将 8000Hz 单声道重采样并升混为双声道/立体声，兼容 Windows WASAPI/VB-CABLE)
+        为指定输出设备适配采样率与声道数 (自动抗混叠重采样并升混为双声道/立体声，兼容 Windows WASAPI/VB-CABLE)
         返回: (formatted_audio_2d_or_1d, target_sample_rate, target_channels)
         """
         target_sr = src_sample_rate
@@ -205,18 +274,9 @@ class WindowsWASAPIPlayer(BaseAudioPlayer):
                 target_sr = default_sr
                 target_ch = min(2, max(1, max_ch))
 
-        # 1. 采样率重采样
+        # 1. 采样率重采样 (具备抗混叠低通滤波)
         if target_sr != src_sample_rate and len(mono_int16) > 0:
-            ratio = target_sr / src_sample_rate
-            num_samples = int(round(len(mono_int16) * ratio))
-            if num_samples > 0:
-                resampled = np.interp(
-                    np.linspace(0, len(mono_int16), num_samples, endpoint=False),
-                    np.arange(len(mono_int16)),
-                    mono_int16
-                ).astype(np.int16)
-            else:
-                resampled = np.empty(0, dtype=np.int16)
+            resampled = resample_audio(mono_int16, src_sample_rate, target_sr).astype(np.int16)
         else:
             resampled = mono_int16.astype(np.int16)
 
@@ -234,6 +294,55 @@ class WindowsWASAPIPlayer(BaseAudioPlayer):
         if wav_data:
             self.queue.put((wav_data, desc))
 
+    def _get_or_create_stream(
+        self,
+        stream_type: str,
+        device_id: Optional[int],
+        sample_rate: int,
+        channels: int
+    ) -> Optional[sd.OutputStream]:
+        """获取长连接流或复用已有流，避免每句语音频繁启闭驱动产生爆音与开销"""
+        desired_params = (device_id, sample_rate, channels)
+        with self._stream_lock:
+            cur_stream = self._stream_out if stream_type == "main" else self._stream_mon
+            cur_params = self._stream_out_params if stream_type == "main" else self._stream_mon_params
+
+            if cur_stream is not None and cur_params == desired_params and cur_stream.active:
+                return cur_stream
+
+            if cur_stream is not None:
+                try:
+                    cur_stream.stop()
+                    cur_stream.close()
+                except Exception:
+                    pass
+
+            try:
+                new_stream = sd.OutputStream(
+                    samplerate=sample_rate,
+                    channels=channels,
+                    dtype='int16',
+                    device=device_id
+                )
+                new_stream.start()
+                if stream_type == "main":
+                    self._stream_out = new_stream
+                    self._stream_out_params = desired_params
+                else:
+                    self._stream_mon = new_stream
+                    self._stream_mon_params = desired_params
+                return new_stream
+            except Exception as e:
+                desc = "主推流" if stream_type == "main" else "耳机监听"
+                print(f"[sounddevice {desc}启动失败 (设备: {device_id})]: {e}", file=sys.stderr)
+                if stream_type == "main":
+                    self._stream_out = None
+                    self._stream_out_params = None
+                else:
+                    self._stream_mon = None
+                    self._stream_mon_params = None
+                return None
+
     def _play_streams(self, wav_data: bytes):
         try:
             with wave.open(io.BytesIO(wav_data)) as wf:
@@ -245,7 +354,10 @@ class WindowsWASAPIPlayer(BaseAudioPlayer):
                     audio_array = audio_array.reshape(-1, n_channels)[:, 0]
         except Exception:
             if len(wav_data) > 44:
-                audio_array = np.frombuffer(wav_data[44:], dtype=np.int16)
+                raw_bytes = wav_data[44:]
+                if len(raw_bytes) % 2 != 0:
+                    raw_bytes = raw_bytes[:-1]
+                audio_array = np.frombuffer(raw_bytes, dtype=np.int16)
                 sample_rate = 8000
             else:
                 return
@@ -254,28 +366,23 @@ class WindowsWASAPIPlayer(BaseAudioPlayer):
         if out_dev is None:
             out_dev = self.find_default_cable_input()
 
+        # 防外放隐私保护：如果既未显式指定设备，也未找到 VB-CABLE，且未显式允许外放，则拦截
+        if out_dev is None and not self.allow_default_speaker:
+            print("[播放警告] 未找到虚拟音频输出设备 (VB-CABLE)，已拦截静默外放以防止物理扬声器隐私泄露。请先安装 VB-CABLE 或在配置中指定输出设备。", file=sys.stderr)
+            return
+
         mon_dev = self.monitor_device
         should_monitor = self.enable_monitor and (mon_dev is not None or out_dev is not None)
 
         try:
             data_out, sr_out, ch_out = self._prepare_audio_for_device(audio_array, sample_rate, out_dev)
-
-            s1 = None
-            s2 = None
-            try:
-                s1 = sd.OutputStream(samplerate=sr_out, channels=ch_out, dtype='int16', device=out_dev)
-                s1.start()
-            except Exception as e:
-                print(f"[sounddevice 主输出启动失败 (设备: {out_dev})]: {e}", file=sys.stderr)
+            s1 = self._get_or_create_stream("main", out_dev, sr_out, ch_out)
 
             data_mon = None
+            s2 = None
             if should_monitor:
                 data_mon, sr_mon, ch_mon = self._prepare_audio_for_device(audio_array, sample_rate, mon_dev)
-                try:
-                    s2 = sd.OutputStream(samplerate=sr_mon, channels=ch_mon, dtype='int16', device=mon_dev)
-                    s2.start()
-                except Exception as e:
-                    print(f"[sounddevice 耳机监听启动失败 (设备: {mon_dev})]: {e}", file=sys.stderr)
+                s2 = self._get_or_create_stream("monitor", mon_dev, sr_mon, ch_mon)
 
             if s1 or s2:
                 chunk_size = 512
@@ -290,19 +397,20 @@ class WindowsWASAPIPlayer(BaseAudioPlayer):
                         try:
                             s1.write(chunk1)
                         except Exception:
-                            pass
+                            with self._stream_lock:
+                                self._stream_out = None
+                                self._stream_out_params = None
+                            break
                     if s2 and i < len_mon:
                         chunk2 = data_mon[i:i + chunk_size]
                         try:
                             s2.write(chunk2)
                         except Exception:
-                            pass
-            if s1:
-                s1.stop()
-                s1.close()
-            if s2:
-                s2.stop()
-                s2.close()
+                            with self._stream_lock:
+                                self._stream_mon = None
+                                self._stream_mon_params = None
+                            break
+
         except Exception as e:
             print(f"[sounddevice 推流异常]: {e}", file=sys.stderr)
 
@@ -325,13 +433,25 @@ class WindowsWASAPIPlayer(BaseAudioPlayer):
         self.running = False
         if self._worker_thread.is_alive():
             self._worker_thread.join(timeout=1.0)
+        with self._stream_lock:
+            for s in [self._stream_out, self._stream_mon]:
+                if s is not None:
+                    try:
+                        s.stop()
+                        s.close()
+                    except Exception:
+                        pass
+            self._stream_out = None
+            self._stream_out_params = None
+            self._stream_mon = None
+            self._stream_mon_params = None
 
 
 class AudioPlayer(BaseAudioPlayer):
     """
     通用音频播放器门面 (Facade)：
     根据操作系统环境自动实例化对应平台的隔离实现：
-    - Windows: 实例化 WindowsWASAPIPlayer (自动对接 VB-CABLE Input 与耳机监听)
+    - Windows: 实例化 WindowsWASAPIPlayer (长连接对接 VB-CABLE Input 与耳机监听)
     - Linux: 严格实例化 LinuxPipeWirePlayer (走原生 pw-play --target yukkuri_sink)
     """
 
@@ -341,13 +461,15 @@ class AudioPlayer(BaseAudioPlayer):
         output_device: Optional[int] = None,
         monitor_device: Optional[int] = None,
         enable_monitor: bool = False,
-        backend: Optional[str] = None
+        backend: Optional[str] = None,
+        allow_default_speaker: bool = False
     ):
         if backend == "wasapi" or (backend is None and sys.platform == "win32"):
             self._impl: BaseAudioPlayer = WindowsWASAPIPlayer(
                 output_device=output_device,
                 monitor_device=monitor_device,
-                enable_monitor=enable_monitor
+                enable_monitor=enable_monitor,
+                allow_default_speaker=allow_default_speaker
             )
         else:
             self._impl = LinuxPipeWirePlayer(

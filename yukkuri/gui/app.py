@@ -559,7 +559,10 @@ class YukkuriApp(ctk.CTk):
                 if sys.platform == "win32":
                     mic_manager = VirtualMicManager(sink_name=config.target_sink)
                 else:
-                    mic_manager = VirtualMicManager(sink_name=config.target_sink) if config.enable_dynamic_mic else None
+                    mic_manager = VirtualMicManager(
+                        sink_name=config.target_sink,
+                        auto_cleanup=config.enable_dynamic_mic
+                    )
 
                 # 回调推送到 UI
                 def on_segment(text: str, koe: str, stats: dict):
@@ -597,14 +600,19 @@ class YukkuriApp(ctk.CTk):
             self.pipeline.stop()
 
     def _send_manual_speak(self):
-        """触发文字转语音推流播报"""
+        """触发文字转语音推流播报 (异步工作线程执行，避免阻塞 Tkinter UI 事件循环)"""
         text = self.entry_speak.get().strip()
         if not text:
             return
 
         if self.pipeline and self.is_running:
-            self.pipeline.speak_text(text)
             self.entry_speak.delete(0, "end")
+            threading.Thread(
+                target=self.pipeline.speak_text,
+                args=(text,),
+                daemon=True,
+                name="ManualSpeakWorker"
+            ).start()
         else:
             self._append_log("系统", "提示：请先启动转换器，即可将文字实时推流至虚拟麦克风！")
 

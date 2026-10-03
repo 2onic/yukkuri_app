@@ -8,7 +8,7 @@ import shutil
 import tarfile
 import zipfile
 import urllib.request
-from typing import Callable, Optional, Dict, List, Any
+from typing import Callable, Optional, Dict, List, Any, Tuple
 
 VAD_URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx"
 SENSEVOICE_URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2"
@@ -19,7 +19,8 @@ VOSK_URLS = {
 }
 
 def get_project_root() -> str:
-    return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    from yukkuri.config import get_default_data_dir
+    return get_default_data_dir()
 
 def check_model_status(root: Optional[str] = None) -> Dict[str, object]:
     """检查各类模型在本地的存在状态"""
@@ -176,6 +177,54 @@ def download_vosk(
 
     return target_dir
 
+def _resolve_archive_target(
+    member_path: str,
+    target_lib64: str,
+    target_base: str
+) -> Tuple[Optional[str], Optional[str]]:
+    """
+    根据归档中的文件路径智能计算安装目标路径，保留声线子目录层级，避免同名 dll/so 相互覆盖。
+    返回: (primary_out_file, secondary_base_file_or_None)
+    """
+    m_lower = member_path.lower()
+    if not (m_lower.endswith(".so") or m_lower.endswith(".dll")):
+        return None, None
+
+    filename = os.path.basename(member_path)
+
+    # 1. 显式带有 lib64/ 路径 (例如 package/lib64/f2/libAquesTalk.so)
+    if "lib64/" in member_path:
+        parts = member_path.split("lib64/")
+        if len(parts) > 1 and parts[1]:
+            rel_path = parts[1].lstrip("/")
+            out_file = os.path.join(target_lib64, rel_path)
+            return out_file, None
+
+    # 2. 检查路径中是否包含声线信息
+    norm_path = member_path.replace("\\", "/")
+    dir_parts = [p for p in os.path.dirname(norm_path).split("/") if p]
+
+    from yukkuri.config import AQUESTALK_VOICES
+    known_voices = set(AQUESTALK_VOICES.keys())
+
+    # 检查是否有明确匹配的已知声线目录 (如 f1, f2, m1, m2 等)
+    for p in reversed(dir_parts):
+        if p.lower() in known_voices:
+            out_file = os.path.join(target_lib64, p.lower(), filename)
+            return out_file, None
+
+    # 3. 如果有多级子目录 (例如 package/voice_sub/AquesTalk.dll)
+    if len(dir_parts) >= 2:
+        parent_sub = dir_parts[-1]
+        out_file = os.path.join(target_lib64, parent_sub, filename)
+        return out_file, None
+
+    # 4. 根目录或一层顶层包裹目录中的动态库 (默认作为 f1 主库)
+    out_file = os.path.join(target_lib64, filename)
+    out_base = os.path.join(target_base, filename)
+    return out_file, out_base
+
+
 def install_aquestalk_from_archive(archive_path: str, root: Optional[str] = None) -> List[str]:
     """从本地 zip 或 tar 压缩包（或单个 dll/so 文件）解压安装 AquesTalk 多声线库"""
     root = root or get_project_root()
@@ -192,42 +241,31 @@ def install_aquestalk_from_archive(archive_path: str, root: Optional[str] = None
     elif lower_path.endswith(".zip"):
         with zipfile.ZipFile(archive_path, "r") as zf:
             for member in zf.namelist():
-                m_lower = member.lower()
-                if "lib64/" in member and (m_lower.endswith(".so") or m_lower.endswith(".dll")):
-                    parts = member.split("lib64/")
-                    if len(parts) > 1 and parts[1]:
-                        rel_path = parts[1]
-                        out_file = os.path.join(target_lib64, rel_path)
-                        os.makedirs(os.path.dirname(out_file), exist_ok=True)
-                        with zf.open(member) as src, open(out_file, "wb") as dst:
-                            shutil.copyfileobj(src, dst)
-                elif m_lower.endswith(".dll") or m_lower.endswith(".so"):
-                    out_file = os.path.join(target_lib64, os.path.basename(member))
+                out_file, out_base = _resolve_archive_target(member, target_lib64, target_base)
+                if out_file:
+                    os.makedirs(os.path.dirname(out_file), exist_ok=True)
                     with zf.open(member) as src, open(out_file, "wb") as dst:
                         shutil.copyfileobj(src, dst)
-                    out_base = os.path.join(target_base, os.path.basename(member))
-                    with zf.open(member) as src, open(out_base, "wb") as dst:
-                        shutil.copyfileobj(src, dst)
+                    if out_base:
+                        os.makedirs(os.path.dirname(out_base), exist_ok=True)
+                        with zf.open(member) as src, open(out_base, "wb") as dst:
+                            shutil.copyfileobj(src, dst)
     elif lower_path.endswith((".tar.gz", ".tgz", ".tar.bz2")):
         with tarfile.open(archive_path, "r:*") as tf:
             for member in tf.getmembers():
-                m_lower = member.name.lower()
-                if "lib64/" in member.name and (m_lower.endswith(".so") or m_lower.endswith(".dll")):
-                    parts = member.name.split("lib64/")
-                    if len(parts) > 1 and parts[1]:
-                        rel_path = parts[1]
-                        out_file = os.path.join(target_lib64, rel_path)
-                        os.makedirs(os.path.dirname(out_file), exist_ok=True)
-                        f = tf.extractfile(member)
-                        if f:
-                            with open(out_file, "wb") as dst:
-                                shutil.copyfileobj(f, dst)
-                elif m_lower.endswith(".so") or m_lower.endswith(".dll"):
-                    out_file = os.path.join(target_lib64, os.path.basename(member.name))
+                out_file, out_base = _resolve_archive_target(member.name, target_lib64, target_base)
+                if out_file:
+                    os.makedirs(os.path.dirname(out_file), exist_ok=True)
                     f = tf.extractfile(member)
                     if f:
                         with open(out_file, "wb") as dst:
                             shutil.copyfileobj(f, dst)
+                    if out_base:
+                        os.makedirs(os.path.dirname(out_base), exist_ok=True)
+                        f2 = tf.extractfile(member)
+                        if f2:
+                            with open(out_base, "wb") as dst:
+                                shutil.copyfileobj(f2, dst)
 
     from yukkuri.config import AppConfig
     cfg = AppConfig(project_root=root)

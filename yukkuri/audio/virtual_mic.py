@@ -1,10 +1,11 @@
 """
 虚拟麦克风动态生命周期管理器，支持平台物理隔离：
-- Linux: 基于 PipeWire / PulseAudio (pactl load-module module-null-sink & module-remap-source)
+- Linux: 基于 PipeWire / PulseAudio (pactl load-module module-null-sink & module-remap-source)，支持退出自动注销与 atexit 安全保障
 - Windows: 基于 VB-Audio Virtual Cable (CABLE Input / CABLE Output) 驱动状态检测与免驱动引导
 """
 
 import sys
+import atexit
 import subprocess
 import shutil
 from typing import List, Optional
@@ -13,11 +14,18 @@ from typing import List, Optional
 class LinuxPipeWireMicManager:
     """Linux 专有虚拟声卡管理：动态加载/卸载 yukkuri_sink 与 yukkuri_source"""
 
-    def __init__(self, sink_name: str = "yukkuri_sink", source_name: str = "yukkuri_source"):
+    def __init__(
+        self,
+        sink_name: str = "yukkuri_sink",
+        source_name: str = "yukkuri_source",
+        auto_cleanup: bool = True
+    ):
         self.sink_name = sink_name
         self.source_name = source_name
+        self.auto_cleanup = auto_cleanup
         self._loaded_modules: List[str] = []
         self._is_active = False
+        self._registered_atexit = False
 
     @staticmethod
     def is_pactl_available() -> bool:
@@ -69,6 +77,12 @@ class LinuxPipeWireMicManager:
 
             self._is_active = True
             print(f"[声卡管理] 已成功动态创建虚拟声卡: {self.sink_name} -> {self.source_name}")
+
+            # 注册 atexit 安全清理
+            if not self._registered_atexit:
+                atexit.register(self.cleanup)
+                self._registered_atexit = True
+
             return True
         except Exception as e:
             print(f"[声卡管理] 动态创建虚拟声卡失败: {e}")
@@ -77,12 +91,29 @@ class LinuxPipeWireMicManager:
 
     def cleanup(self):
         """退出时释放动态加载的模块，保持系统整洁"""
+        if self._registered_atexit:
+            try:
+                atexit.unregister(self.cleanup)
+            except Exception:
+                pass
+            self._registered_atexit = False
+
+        if not self.auto_cleanup:
+            print(f"[声卡管理] 已按配置保留系统虚拟声卡节点 ({self.sink_name})。")
+            self._is_active = False
+            return
+
         if not self._loaded_modules:
             return
 
         for mod_id in reversed(self._loaded_modules):
             try:
-                subprocess.run(["pactl", "unload-module", mod_id], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(
+                    ["pactl", "unload-module", mod_id],
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
             except Exception:
                 pass
 
@@ -136,11 +167,20 @@ class VirtualMicManager:
     根据运行环境自动分派对应平台的虚拟声卡驱动管理实现。
     """
 
-    def __init__(self, sink_name: str = "yukkuri_sink", source_name: str = "yukkuri_source"):
+    def __init__(
+        self,
+        sink_name: str = "yukkuri_sink",
+        source_name: str = "yukkuri_source",
+        auto_cleanup: bool = True
+    ):
         if sys.platform == "win32":
             self._impl = WindowsVBCableManager()
         else:
-            self._impl = LinuxPipeWireMicManager(sink_name=sink_name, source_name=source_name)
+            self._impl = LinuxPipeWireMicManager(
+                sink_name=sink_name,
+                source_name=source_name,
+                auto_cleanup=auto_cleanup
+            )
 
     @property
     def impl(self):

@@ -55,6 +55,8 @@ class YukkuriPipeline:
             gain=getattr(config, "mic_gain", 1.0),
         )
         self.stop_event = threading.Event()
+        self._stopped = False
+        self._stop_lock = threading.Lock()
 
     def set_voice(self, voice: str) -> bool:
         """动态切换当前油库里声线 (如 f1, f2, m1 等)"""
@@ -237,7 +239,12 @@ class YukkuriPipeline:
             self.stop()
 
     def stop(self):
-        """优雅关闭各组件"""
+        """优雅关闭各组件 (具备线程安全与幂等防重保证)"""
+        with self._stop_lock:
+            if self._stopped:
+                return
+            self._stopped = True
+
         self.stop_event.set()
         print("\n>>> 正在停止音频采集与推流...")
         self.mic_stream.stop()

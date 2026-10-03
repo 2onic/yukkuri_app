@@ -7,6 +7,7 @@ import queue
 from typing import Optional, Callable, Tuple
 import sounddevice as sd
 import numpy as np
+from yukkuri.audio.resample import resample_audio
 
 class MicrophoneStream:
     """基于 sounddevice 的非阻塞麦克风采样流，具备硬件格式自适应与重采样能力"""
@@ -105,17 +106,9 @@ class MicrophoneStream:
         else:
             self.current_level = 0.0
 
-        # 4. 采样率重采样至 self.sample_rate (16000Hz)
+        # 4. 采样率重采样至 self.sample_rate (16000Hz)（具备低通抗混叠滤波）
         if self.actual_sample_rate != self.sample_rate and len(mono) > 0:
-            target_len = int(round(len(mono) * self.sample_rate / self.actual_sample_rate))
-            if target_len > 0:
-                resampled = np.interp(
-                    np.linspace(0, len(mono), target_len, endpoint=False),
-                    np.arange(len(mono)),
-                    mono
-                ).astype(np.float32)
-            else:
-                resampled = np.empty(0, dtype=np.float32)
+            resampled = resample_audio(mono, self.actual_sample_rate, self.sample_rate).astype(np.float32)
         else:
             resampled = mono.astype(np.float32)
 
