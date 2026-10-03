@@ -514,7 +514,9 @@ class YukkuriApp(ctk.CTk):
 
                 tts_engine = AquesTalk1Engine(
                     voice=config.voice,
-                    voice_resolver=config.find_aquestalk_library
+                    voice_resolver=config.find_aquestalk_library,
+                    dev_key=config.dev_key,
+                    usr_key=config.usr_key,
                 )
                 vad_detector = None
 

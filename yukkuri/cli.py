@@ -81,6 +81,14 @@ def parse_args() -> argparse.Namespace:
         help="启动桌面图形控制界面 (GUI)"
     )
     parser.add_argument(
+        "--dev-key", type=str, default=None,
+        help="AquesTalk 官方开发授权密钥 (DevKey)"
+    )
+    parser.add_argument(
+        "--usr-key", type=str, default=None,
+        help="AquesTalk 官方使用授权密钥 (UsrKey)"
+    )
+    parser.add_argument(
         "--list-devices", action="store_true",
         help="列出所有可用音频输入/输出设备并退出"
     )
@@ -120,6 +128,8 @@ def main():
         mic_gain=args.mic_gain,
         vad_max_speech=args.max_speech_duration if args.max_speech_duration > 0 else 0.0,
         vad_enable_max_speech=enable_max_speech,
+        dev_key=args.dev_key,
+        usr_key=args.usr_key,
     )
 
     # 1. 查找并初始化 AquesTalk 多声线合成引擎
@@ -135,7 +145,9 @@ def main():
     try:
         tts_engine = AquesTalk1Engine(
             voice=config.voice,
-            voice_resolver=config.find_aquestalk_library
+            voice_resolver=config.find_aquestalk_library,
+            dev_key=config.dev_key,
+            usr_key=config.usr_key,
         )
     except Exception as e:
         print(f"[错误] 初始化 AquesTalk 失败: {e}", file=sys.stderr)

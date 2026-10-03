@@ -58,6 +58,10 @@ class AppConfig:
     custom_model_path: Optional[str] = None
     custom_aquestalk_dir: Optional[str] = None
 
+    # AquesTalk 官方授权密钥 (可选，支持从环境变量 AQUESTALK_DEV_KEY / AQUESTALK_USR_KEY 读取)
+    dev_key: Optional[str] = field(default_factory=lambda: os.environ.get("AQUESTALK_DEV_KEY", None))
+    usr_key: Optional[str] = field(default_factory=lambda: os.environ.get("AQUESTALK_USR_KEY", None))
+
     # 项目根目录路径（自动计算）
     project_root: str = field(default_factory=lambda: os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 

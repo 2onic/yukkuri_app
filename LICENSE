@@ -29,6 +29,10 @@ Third-Party Notices and Disclaimers
    - Website: https://www.a-quest.com/
    - NOTICE: This repository does NOT bundle, distribute, or host any proprietary 
      AquesTalk library or binary (e.g. libAquesTalk.so, AquesTalk.dll).
+   - NOTICE: This repository does NOT distribute, bundle, or sell any unauthorized 
+     license keys. Configurable developer and user key interfaces (dev_key / usr_key) 
+     are provided strictly for users who independently hold legitimate licenses 
+     issued by Aquest Corp.
    - AquesTalk is NOT covered by the MIT License of this project. Users must 
      download and acquire the library directly from Aquest Corp.
    - Personal non-commercial use is governed by Aquest's license terms. Any 

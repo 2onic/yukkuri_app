@@ -29,10 +29,14 @@ class AquesTalk1Engine(BaseTTSEngine):
         self,
         lib_path: Optional[str] = None,
         voice: str = "f1",
-        voice_resolver: Optional[Callable[[str], Optional[str]]] = None
+        voice_resolver: Optional[Callable[[str], Optional[str]]] = None,
+        dev_key: Optional[str] = None,
+        usr_key: Optional[str] = None,
     ):
         self.voice_resolver = voice_resolver
         self._current_voice = voice.lower()
+        self.dev_key = dev_key if dev_key is not None else os.environ.get("AQUESTALK_DEV_KEY")
+        self.usr_key = usr_key if usr_key is not None else os.environ.get("AQUESTALK_USR_KEY")
         self._lock = threading.Lock()
 
         # 声线缓存: voice_name -> (cdll_lib, synthe_fn, use_utf8)
@@ -64,6 +68,21 @@ class AquesTalk1Engine(BaseTTSEngine):
                     raise RuntimeError(f"无法加载 AquesTalk 动态库 {path}: {e_windll}")
             else:
                 raise RuntimeError(f"无法加载 AquesTalk 动态库 {path}: {e_cdll}")
+
+        # 若用户提供了官方授权密钥，在此进行官方接口认证
+        if hasattr(lib, 'AquesTalk_SetDevKey') and self.dev_key:
+            lib.AquesTalk_SetDevKey.argtypes = [ctypes.c_char_p]
+            lib.AquesTalk_SetDevKey.restype = ctypes.c_int
+            ret = lib.AquesTalk_SetDevKey(self.dev_key.encode('ascii'))
+            if ret != 0:
+                print(f"[AquesTalk 警告] AquesTalk_SetDevKey 认证返回非0 ({ret})", file=sys.stderr)
+
+        if hasattr(lib, 'AquesTalk_SetUsrKey') and self.usr_key:
+            lib.AquesTalk_SetUsrKey.argtypes = [ctypes.c_char_p]
+            lib.AquesTalk_SetUsrKey.restype = ctypes.c_int
+            ret = lib.AquesTalk_SetUsrKey(self.usr_key.encode('ascii'))
+            if ret != 0:
+                print(f"[AquesTalk 警告] AquesTalk_SetUsrKey 认证返回非0 ({ret})", file=sys.stderr)
 
         if hasattr(lib, 'AquesTalk_Synthe_Utf8'):
             synthe_fn = lib.AquesTalk_Synthe_Utf8

@@ -42,3 +42,8 @@ env/
 *.mp3
 *.log
 tmp/
+
+# 本地环境变量与私有配置
+.env
+.env.*
+.env.local

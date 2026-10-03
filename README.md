@@ -164,6 +164,8 @@ python -m yukkuri.cli --loopback --voice f2
 | `--lang` | `zh` | 发音/模型主语种（`zh`, `ja`, `en`；SenseVoice 原生支持多语种混读） |
 | `--target` | `yukkuri_sink` | Linux PipeWire 输出目标 Sink 名称 |
 | `--no-dynamic-mic` | - | 禁用 Linux pactl 自动动态加载/卸载虚拟声卡 |
+| `--dev-key` | 无 | AquesTalk 官方开发授权密钥（DevKey） |
+| `--usr-key` | 无 | AquesTalk 官方使用授权密钥（UsrKey） |
 | `--list-devices` | - | 列出当前系统的所有音频输入输出设备及其编号并退出 |
 | `--gui` | - | 启动桌面图形控制界面 |
 
@@ -172,9 +174,9 @@ python -m yukkuri.cli --loopback --voice f2
 ## 版权与免责声明
 
 1. **AquesTalk1**：
-   - 本项目本身**不打包、不分发任何 AquesTalk 二进制专有动态库**；
-   - 语音合成引擎及动态库（`libAquesTalk.so` / `AquesTalk.dll`）属于 **[株式会社アクエスト (Aquest Corp.)](https://www.a-quest.com/)** 的版权财产，不受本项目 MIT 协议管辖；
-   - 个人非商业用途请遵守官方使用条款。如需商业用途，请向 AQUEST 申请正式商业授权。
+   - 本项目本身**不打包、不分发任何 AquesTalk 二进制专有动态库，亦不分发或提供任何商业授权密钥**；
+   - 语音合成引擎及动态库（`libAquesTalk.so` / `AquesTalk.dll`）属于 **[株式会社アクエスト (Aquest Corp.)](https://www.a-quest.com/)** 的专有版权财产，不受本项目 MIT 协议管辖；
+   - 个人非商业用途请遵守官方使用条款。如需商业用途、公开发布分发或解除评价版发音限制，用户须自行向 AQUEST 申请并购买合法的正式授权许可证，并通过 `--dev-key` 或环境变量 `AQUESTALK_DEV_KEY` 配置。
 2. **开源组件与依赖**：
    - SenseVoice、sherpa-onnx、Vosk 遵循 Apache-2.0 开源协议；
    - Silero VAD、CustomTkinter 遵循 MIT 开源协议；
