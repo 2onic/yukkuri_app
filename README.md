@@ -173,13 +173,13 @@ AquesTalk1 属于 **株式会社AQUEST (Aquest Corp.)** 专有版权软件。官
 AQUESTALK_DEV_KEY=your_dev_key_here
 
 # 或使用使用授权密钥
-# AQUESTALK_USR_KEY=your_usr_key_here
+AQUESTALK_USR_KEY=your_usr_key_here
 ```
 > [!TIP]
 > 无论是通过终端命令行还是直接启动桌面 GUI（`yukkuri-gui` / `run.bat`），程序启动时均会自动读取 `.env` 并注入认证，无需每次手动输入。
 
 #### 方式二：操作系统环境变量
-- **Linux / macOS (Bash / Zsh)**:
+- **Linux (Bash / Zsh)**:
   ```bash
   export AQUESTALK_DEV_KEY="your_dev_key_here"
   ```
