@@ -46,7 +46,8 @@ class YukkuriPipeline:
             target_sink=config.target_sink,
             output_device=getattr(config, "output_device", None),
             monitor_device=getattr(config, "monitor_device", None),
-            enable_monitor=config.enable_loopback
+            enable_monitor=config.enable_loopback,
+            gain=getattr(config, "output_gain", 1.0),
         )
         self.mic_stream = MicrophoneStream(
             sample_rate=config.sample_rate,
@@ -85,6 +86,12 @@ class YukkuriPipeline:
         self.config.mic_gain = max(0.1, float(gain))
         if self.mic_stream:
             self.mic_stream.set_gain(self.config.mic_gain)
+
+    def set_output_gain(self, gain: float):
+        """动态调节合成语音推流输出增益"""
+        self.config.output_gain = max(0.0, float(gain))
+        if self.player:
+            self.player.set_gain(self.config.output_gain)
 
     @property
     def is_speech_detected(self) -> bool:
@@ -200,6 +207,8 @@ class YukkuriPipeline:
         print(f"  - 识别引擎: {self.config.engine} (语种: {self.config.lang})")
         print(f"  - 合成引擎: AquesTalk1 (声线: {self.config.voice}, 语速: {self.config.speed})")
         print(f"  - 音频输出: {self.config.target_sink}")
+        if getattr(self.config, "output_gain", 1.0) != 1.0:
+            print(f"  - 输出增益: {self.config.output_gain:.1f}x")
         print(f"  - 回放监听: {'已开启 (耳机可同步收听)' if self.config.enable_loopback else '已关闭'}")
         if self.config.device is not None:
             print(f"  - 输入设备 ID: {self.config.device}")

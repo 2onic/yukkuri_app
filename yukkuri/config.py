@@ -103,6 +103,7 @@ class AppConfig:
     output_device: Optional[int] = None     # 目标播放设备索引 (Windows WASAPI/VB-CABLE)
     monitor_device: Optional[int] = None    # 本地监听输出设备索引 (耳机)
     mic_gain: float = 1.0                   # 麦克风输入软件增益倍数 (0.1 ~ 5.0)
+    output_gain: float = 1.0                # 合成语音推流输出增益倍数 (0.1 ~ 5.0)
 
     # 虚拟声卡名称 (Linux PipeWire 节点名)
     target_sink: str = "yukkuri_sink"

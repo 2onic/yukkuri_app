@@ -19,6 +19,41 @@ import sounddevice as sd
 from yukkuri.audio.resample import resample_audio
 
 
+def apply_wav_gain(wav_data: bytes, gain: float) -> bytes:
+    """
+    对 WAV 二进制音频数据应用软件输出增益调节 (支持防溢出饱和截断)。
+    若增益为 1.0 或数据为空则直接返回，保持零额外开销。
+    """
+    if abs(gain - 1.0) < 1e-4 or not wav_data:
+        return wav_data
+
+    gain = max(0.0, float(gain))
+    try:
+        with wave.open(io.BytesIO(wav_data), "rb") as wf:
+            params = wf.getparams()
+            frames = wf.readframes(wf.getnframes())
+            if wf.getsampwidth() == 2:
+                samples = np.frombuffer(frames, dtype=np.int16).astype(np.float32)
+                samples = samples * gain
+                samples = np.clip(samples, -32768, 32767).astype(np.int16)
+                out_io = io.BytesIO()
+                with wave.open(out_io, "wb") as out_wf:
+                    out_wf.setparams(params)
+                    out_wf.writeframes(samples.tobytes())
+                return out_io.getvalue()
+    except Exception:
+        if len(wav_data) > 44:
+            header = wav_data[:44]
+            raw = wav_data[44:]
+            if len(raw) % 2 != 0:
+                raw = raw[:-1]
+            samples = np.frombuffer(raw, dtype=np.int16).astype(np.float32)
+            samples = np.clip(samples * gain, -32768, 32767).astype(np.int16)
+            return header + samples.tobytes()
+
+    return wav_data
+
+
 class BaseAudioPlayer(abc.ABC):
     """音频播放器抽象基类"""
 
@@ -36,6 +71,10 @@ class BaseAudioPlayer(abc.ABC):
         """设置耳机监听 (在非 PipeWire 模式下生效)"""
         pass
 
+    def set_gain(self, gain: float):
+        """设置软件输出音量增益"""
+        pass
+
 
 class LinuxPipeWirePlayer(BaseAudioPlayer):
     """
@@ -44,15 +83,22 @@ class LinuxPipeWirePlayer(BaseAudioPlayer):
     以保证推流直接注入 PipeWire 虚拟声卡节点图。
     """
 
-    def __init__(self, target_sink: str = "yukkuri_sink"):
+    def __init__(self, target_sink: str = "yukkuri_sink", gain: float = 1.0):
         self.target_sink = target_sink
+        self.gain = max(0.0, float(gain))
         self.queue: queue.Queue = queue.Queue()
         self.running = True
         self._worker_thread = threading.Thread(target=self._worker, daemon=True)
         self._worker_thread.start()
 
+    def set_gain(self, gain: float):
+        """动态设置输出增益"""
+        self.gain = max(0.0, float(gain))
+
     def play(self, wav_data: bytes, desc: str = ""):
         if wav_data:
+            if abs(self.gain - 1.0) >= 1e-4:
+                wav_data = apply_wav_gain(wav_data, self.gain)
             self.queue.put((wav_data, desc))
 
     def _is_sink_available(self) -> bool:
@@ -143,12 +189,14 @@ class WindowsWASAPIPlayer(BaseAudioPlayer):
         output_device: Optional[int] = None,
         monitor_device: Optional[int] = None,
         enable_monitor: bool = False,
-        allow_default_speaker: bool = False
+        allow_default_speaker: bool = False,
+        gain: float = 1.0
     ):
         self.output_device = output_device
         self.monitor_device = monitor_device
         self.enable_monitor = enable_monitor
         self.allow_default_speaker = allow_default_speaker
+        self.gain = max(0.0, float(gain))
         self.queue: queue.Queue = queue.Queue()
         self.running = True
 
@@ -160,6 +208,10 @@ class WindowsWASAPIPlayer(BaseAudioPlayer):
 
         self._worker_thread = threading.Thread(target=self._worker, daemon=True)
         self._worker_thread.start()
+
+    def set_gain(self, gain: float):
+        """动态设置输出增益"""
+        self.gain = max(0.0, float(gain))
 
     def set_monitor(self, enable: bool, device_id: Optional[int] = None):
         """动态开启/关闭本地耳机回放监听"""
@@ -292,6 +344,8 @@ class WindowsWASAPIPlayer(BaseAudioPlayer):
 
     def play(self, wav_data: bytes, desc: str = ""):
         if wav_data:
+            if abs(self.gain - 1.0) >= 1e-4:
+                wav_data = apply_wav_gain(wav_data, self.gain)
             self.queue.put((wav_data, desc))
 
     def _get_or_create_stream(
@@ -462,18 +516,21 @@ class AudioPlayer(BaseAudioPlayer):
         monitor_device: Optional[int] = None,
         enable_monitor: bool = False,
         backend: Optional[str] = None,
-        allow_default_speaker: bool = False
+        allow_default_speaker: bool = False,
+        gain: float = 1.0
     ):
         if backend == "wasapi" or (backend is None and sys.platform == "win32"):
             self._impl: BaseAudioPlayer = WindowsWASAPIPlayer(
                 output_device=output_device,
                 monitor_device=monitor_device,
                 enable_monitor=enable_monitor,
-                allow_default_speaker=allow_default_speaker
+                allow_default_speaker=allow_default_speaker,
+                gain=gain
             )
         else:
             self._impl = LinuxPipeWirePlayer(
-                target_sink=target_sink
+                target_sink=target_sink,
+                gain=gain
             )
 
     @property
@@ -488,3 +545,6 @@ class AudioPlayer(BaseAudioPlayer):
 
     def set_monitor(self, enable: bool, device_id: Optional[int] = None):
         self._impl.set_monitor(enable, device_id)
+
+    def set_gain(self, gain: float):
+        self._impl.set_gain(gain)

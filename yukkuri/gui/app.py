@@ -175,6 +175,12 @@ class YukkuriApp(ctk.CTk):
         self.speed_slider.set(100)
         self.speed_slider.pack(fill="x", padx=12, pady=(2, 10))
 
+        self.output_gain_label = ctk.CTkLabel(tune_card, text="输出音量增益: 1.0x (标准音量)", font=ctk.CTkFont(size=13))
+        self.output_gain_label.pack(anchor="w", padx=12, pady=(4, 0))
+        self.output_gain_slider = ctk.CTkSlider(tune_card, from_=0.5, to=3.0, number_of_steps=25, command=self._on_output_gain_changed)
+        self.output_gain_slider.set(1.0)
+        self.output_gain_slider.pack(fill="x", padx=12, pady=(2, 10))
+
         self.vad_label = ctk.CTkLabel(tune_card, text="说话停顿断句: 350 ms", font=ctk.CTkFont(size=13))
         self.vad_label.pack(anchor="w", padx=12, pady=(4, 0))
         self.vad_slider = ctk.CTkSlider(tune_card, from_=200, to=700, number_of_steps=50, command=self._on_vad_changed)
@@ -388,6 +394,14 @@ class YukkuriApp(ctk.CTk):
         if self.pipeline:
             self.pipeline.config.speed = spd
 
+    def _on_output_gain_changed(self, value):
+        gain = round(float(value), 1)
+        percent = int(gain * 100)
+        note = "标准音量" if gain == 1.0 else ("放大" if gain > 1.0 else "降低")
+        self.output_gain_label.configure(text=f"输出音量增益: {gain:.1f}x ({percent}%, {note})")
+        if self.pipeline:
+            self.pipeline.set_output_gain(gain)
+
     def _on_vad_changed(self, value):
         ms = int(value)
         self.vad_label.configure(text=f"说话停顿断句: {ms} ms")
@@ -473,6 +487,7 @@ class YukkuriApp(ctk.CTk):
         vad_silence = self.vad_slider.get() / 1000.0
         vad_max_speech = round(float(self.max_speech_slider.get()), 1)
         mic_gain = round(float(self.gain_slider.get()), 1)
+        output_gain = round(float(self.output_gain_slider.get()), 1)
         monitor_device_id = None
         if sys.platform == "win32" and hasattr(self, "monitor_menu"):
             selected_mon_label = self.monitor_menu.get()
@@ -493,6 +508,7 @@ class YukkuriApp(ctk.CTk):
             device=device_id,
             monitor_device=monitor_device_id,
             mic_gain=mic_gain,
+            output_gain=output_gain,
             vad_min_silence=vad_silence,
             vad_max_speech=vad_max_speech,
             vad_enable_max_speech=enable_max_speech,

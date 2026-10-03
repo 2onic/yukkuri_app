@@ -69,6 +69,10 @@ def parse_args() -> argparse.Namespace:
         help="麦克风输入软件增益倍数 (默认: 1.0, 可设为 0.5~3.0)"
     )
     parser.add_argument(
+        "--output-gain", type=float, default=1.0,
+        help="油库里合成输出音量增益倍数 (默认: 1.0, 可设为 0.1~3.0)"
+    )
+    parser.add_argument(
         "--no-max-speech", "--disable-cutoff", action="store_true",
         help="手动关闭最长单句强制截断保护"
     )
@@ -126,6 +130,7 @@ def main():
         enable_dynamic_mic=not args.no_dynamic_mic,
         enable_loopback=args.loopback,
         mic_gain=args.mic_gain,
+        output_gain=args.output_gain,
         vad_max_speech=args.max_speech_duration if args.max_speech_duration > 0 else 0.0,
         vad_enable_max_speech=enable_max_speech,
         dev_key=args.dev_key,
