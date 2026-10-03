@@ -4,6 +4,7 @@ GUI 模型下载与状态管理对话框
 """
 
 import os
+import sys
 import threading
 import queue
 import webbrowser
@@ -52,11 +53,24 @@ class AquesTalkImportDialog(ctk.CTkToplevel):
             text_color="#81D4FA"
         ).grid(row=0, column=0, padx=14, pady=(10, 4), sticky="w")
 
-        info_text = (
-            "AquesTalk1 属于 株式会社AQUEST (Aquest Corp.) 专有版权软件。\n"
-            "受官方许可协议严格限制，任何第三方均不得二次打包或分发其动态库。\n"
-            "用户可前往官方网站免费下载 Linux 评价版 (aqtk1_lnx_200.zip) 并导入。"
-        )
+        is_win = sys.platform == "win32"
+        if is_win:
+            info_text = (
+                "AquesTalk1 属于 株式会社AQUEST (Aquest Corp.) 专有版权软件。\n"
+                "受官方许可协议严格限制，任何第三方均不得二次打包或分发其动态库。\n"
+                "用户可前往官方网站免费下载 Windows 评价版 (如 aqtk1-win / AquesTalk.dll) 并导入。"
+            )
+            hint_text = "提示：下载页中找到【AquesTalk1 Win】点击 Download 即可获得 aqtk1-win.zip 或 AquesTalk.dll"
+            dir_btn_text = "📁 选择本地已解压目录 (aqtk1-win)"
+        else:
+            info_text = (
+                "AquesTalk1 属于 株式会社AQUEST (Aquest Corp.) 专有版权软件。\n"
+                "受官方许可协议严格限制，任何第三方均不得二次打包或分发其动态库。\n"
+                "用户可前往官方网站免费下载 Linux 评价版 (aqtk1_lnx_200.zip) 并导入。"
+            )
+            hint_text = "提示：下载页中找到【AquesTalk1 Linux】点击 Download 即可获得 aqtk1_lnx_200.zip"
+            dir_btn_text = "📁 选择本地已解压目录 (aqtk1_lnx)"
+
         ctk.CTkLabel(
             header,
             text=info_text,
@@ -84,7 +98,7 @@ class AquesTalkImportDialog(ctk.CTkToplevel):
 
         ctk.CTkLabel(
             body,
-            text="提示：下载页中找到【AquesTalk1 Linux】点击 Download 即可获得 aqtk1_lnx_200.zip",
+            text=hint_text,
             font=ctk.CTkFont(size=11),
             text_color="#9E9E9E"
         ).pack(anchor="w", padx=18, pady=(0, 10))
@@ -116,7 +130,7 @@ class AquesTalkImportDialog(ctk.CTkToplevel):
         # 选项 4: 手动选择解压目录
         btn_dir = ctk.CTkButton(
             body,
-            text="📁 选择本地已解压目录 (aqtk1_lnx)",
+            text=dir_btn_text,
             height=36,
             font=ctk.CTkFont(size=13),
             fg_color="#455A64",
@@ -131,7 +145,9 @@ class AquesTalkImportDialog(ctk.CTkToplevel):
             mb.showinfo("导入成功", f"成功自动识别并配置 AquesTalk 多声线库！\n可用声线数量: {len(detected)} 种 ({', '.join(detected)})")
             self._finish_import()
         else:
-            mb.showwarning("未找到文件", "未能自动在下载目录或常用位置找到 aqtk1_lnx_200.zip，请点击下方手动选择文件。")
+            is_win = sys.platform == "win32"
+            target_name = "aqtk1-win.zip 或 AquesTalk.dll" if is_win else "aqtk1_lnx_200.zip"
+            mb.showwarning("未找到文件", f"未能自动在下载目录或常用位置找到 {target_name}，请点击下方手动选择文件。")
 
     def _on_select_zip(self):
         file_path = fd.askopenfilename(

@@ -145,6 +145,68 @@ python -m yukkuri.cli --loopback --voice f2
 
 ---
 
+## AquesTalk 官方授权与密钥配置
+
+AquesTalk1 属于 **株式会社AQUEST (Aquest Corp.)** 专有版权软件。官方允许个人非商业用途免费下载评价版体验。
+
+### 为什么需要配置官方密钥？
+1. **解除评价版发音限制**：  
+   AquesTalk1 免费评价版（Evaluation Version）内置了发音限制，会将特定音节（如 na 行、ma 行等）替换为 `"nu"` 音（例如日语中的 `な/に/ぬ/ね/の` 或中文音译中含有 `n/m` 的音节可能会发出 `"nu"`）。配置官方正式许可证密钥后，将完全解除该限制。
+2. **商用合规与分发**：  
+   若将本软件应用于商业环境、盈利性直播或自媒体公开发布视频，必须遵守 AQUEST 官方许可购买相应的正式授权许可证。
+
+官方提供了两种密钥类型，本项目均完整支持：
+- **开发授权密钥（DevKey）**：通过 `AquesTalk_SetDevKey` 认证。
+- **使用授权密钥（UsrKey）**：通过 `AquesTalk_SetUsrKey` 认证。
+许可证办理与购买请前往：[AQUEST 官方许可证购买指引](https://www.a-quest.com/licence_aqtk.html)
+
+---
+
+### 密钥配置方式
+
+本项目支持三种配置方式，按优先级由高到低生效：
+
+#### 方式一：本地 `.env` 配置文件（推荐，安全且 CLI / GUI 通用）
+在项目根目录下新建一个名为 `.env` 的文件：
+```ini
+# AquesTalk 官方开发授权密钥 (二选一)
+AQUESTALK_DEV_KEY=your_dev_key_here
+
+# 或使用使用授权密钥
+# AQUESTALK_USR_KEY=your_usr_key_here
+```
+> [!TIP]
+> 无论是通过终端命令行还是直接启动桌面 GUI（`yukkuri-gui` / `run.bat`），程序启动时均会自动读取 `.env` 并注入认证，无需每次手动输入。
+
+#### 方式二：操作系统环境变量
+- **Linux / macOS (Bash / Zsh)**:
+  ```bash
+  export AQUESTALK_DEV_KEY="your_dev_key_here"
+  ```
+- **Windows (CMD)**:
+  ```cmd
+  set AQUESTALK_DEV_KEY=your_dev_key_here
+  ```
+- **Windows (PowerShell)**:
+  ```powershell
+  $env:AQUESTALK_DEV_KEY="your_dev_key_here"
+  ```
+
+#### 方式三：CLI 命令行参数
+在终端执行时直接传递参数：
+```bash
+# Linux
+yukkuri --dev-key "your_dev_key_here"
+# 或
+./run.sh --dev-key "your_dev_key_here"
+
+# Windows
+python -m yukkuri.cli --dev-key "your_dev_key_here"
+```
+*(若持有使用授权密钥，将 `--dev-key` 替换为 `--usr-key` 即可)*
+
+---
+
 ## 进阶命令行参数说明
 
 `yukkuri` 命令与 `./run.sh` 完整支持以下参数：
