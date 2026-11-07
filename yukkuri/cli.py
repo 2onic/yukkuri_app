@@ -101,6 +101,12 @@ def parse_args() -> argparse.Namespace:
 def main():
     args = parse_args()
 
+    if args.list_devices:
+        print("\n=== 系统可用音频设备列表 ===")
+        print(sd.query_devices())
+        print()
+        return 0
+
     if args.gui:
         try:
             from yukkuri.gui.app import main as gui_main
@@ -109,12 +115,6 @@ def main():
             print(f"[错误] 无法加载 GUI 模块: {e}", file=sys.stderr)
             print("请确认已安装 customtkinter 依赖: pip install customtkinter", file=sys.stderr)
             return 1
-
-    if args.list_devices:
-        print("\n=== 系统可用音频设备列表 ===")
-        print(sd.query_devices())
-        print()
-        return 0
 
     enable_max_speech = (not args.no_max_speech) and (args.max_speech_duration > 0)
     config = AppConfig(

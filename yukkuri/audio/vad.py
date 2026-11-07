@@ -110,8 +110,9 @@ class SileroVAD:
         segments = []
         while not self._detector.empty():
             seg = self._detector.front
+            samples = np.array(seg.samples, dtype=np.float32)
             self._detector.pop()
-            segments.append(np.array(seg.samples, dtype=np.float32))
+            segments.append(samples)
         return segments
 
     def flush(self) -> List[np.ndarray]:
@@ -120,6 +121,7 @@ class SileroVAD:
         segments = []
         while not self._detector.empty():
             seg = self._detector.front
+            samples = np.array(seg.samples, dtype=np.float32)
             self._detector.pop()
-            segments.append(np.array(seg.samples, dtype=np.float32))
+            segments.append(samples)
         return segments

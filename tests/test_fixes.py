@@ -152,15 +152,16 @@ class TestFixesVerification(unittest.TestCase):
     def test_s6_get_default_data_dir(self):
         """S6: 测试非源码开发目录下数据目录自动使用用户数据目录隔离"""
         # 测试显式环境变量
-        with patch.dict(os.environ, {"YUKKURI_DATA_DIR": "/tmp/custom_yukkuri_data"}):
-            self.assertEqual(get_default_data_dir(), "/tmp/custom_yukkuri_data")
+        custom_dir = os.path.abspath("/tmp/custom_yukkuri_data")
+        with patch.dict(os.environ, {"YUKKURI_DATA_DIR": custom_dir}):
+            self.assertEqual(get_default_data_dir(), custom_dir)
 
         # 模拟在非源码目录运行 (不存在 pyproject.toml)
         with patch.dict(os.environ, {}, clear=True):
             with patch("os.path.exists", return_value=False):
                 with patch("sys.platform", "linux"):
                     data_dir = get_default_data_dir()
-                    self.assertIn(".local/share/yukkuri", data_dir)
+                    self.assertIn(".local/share/yukkuri", data_dir.replace("\\", "/"))
 
     def test_s7_virtual_mic_auto_cleanup(self):
         """S7/额外3: 测试 auto_cleanup 开关对 virtual_mic 的卸载控制"""

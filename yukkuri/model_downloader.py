@@ -180,7 +180,8 @@ def download_vosk(
 def _resolve_archive_target(
     member_path: str,
     target_lib64: str,
-    target_base: str
+    target_base: str,
+    has_lib64: bool = False
 ) -> Tuple[Optional[str], Optional[str]]:
     """
     根据归档中的文件路径智能计算安装目标路径，保留声线子目录层级，避免同名 dll/so 相互覆盖。
@@ -188,6 +189,14 @@ def _resolve_archive_target(
     """
     m_lower = member_path.lower()
     if not (m_lower.endswith(".so") or m_lower.endswith(".dll")):
+        return None, None
+
+    # 排除样例代码与无关系统隐藏文件
+    if "sample" in m_lower or "__macosx" in m_lower:
+        return None, None
+
+    # 若归档包含专门的 lib64 目录，则在 64 位环境下严格过滤掉 32 位的 lib/ 目录
+    if has_lib64 and ("/lib/" in m_lower or m_lower.startswith("lib/")):
         return None, None
 
     filename = os.path.basename(member_path)
@@ -240,8 +249,10 @@ def install_aquestalk_from_archive(archive_path: str, root: Optional[str] = None
         shutil.copy2(archive_path, os.path.join(target_base, filename))
     elif lower_path.endswith(".zip"):
         with zipfile.ZipFile(archive_path, "r") as zf:
-            for member in zf.namelist():
-                out_file, out_base = _resolve_archive_target(member, target_lib64, target_base)
+            namelist = zf.namelist()
+            has_lib64 = any("lib64" in n.lower() for n in namelist)
+            for member in namelist:
+                out_file, out_base = _resolve_archive_target(member, target_lib64, target_base, has_lib64=has_lib64)
                 if out_file:
                     os.makedirs(os.path.dirname(out_file), exist_ok=True)
                     with zf.open(member) as src, open(out_file, "wb") as dst:
@@ -252,8 +263,10 @@ def install_aquestalk_from_archive(archive_path: str, root: Optional[str] = None
                             shutil.copyfileobj(src, dst)
     elif lower_path.endswith((".tar.gz", ".tgz", ".tar.bz2")):
         with tarfile.open(archive_path, "r:*") as tf:
-            for member in tf.getmembers():
-                out_file, out_base = _resolve_archive_target(member.name, target_lib64, target_base)
+            members = tf.getmembers()
+            has_lib64 = any("lib64" in m.name.lower() for m in members)
+            for member in members:
+                out_file, out_base = _resolve_archive_target(member.name, target_lib64, target_base, has_lib64=has_lib64)
                 if out_file:
                     os.makedirs(os.path.dirname(out_file), exist_ok=True)
                     f = tf.extractfile(member)
@@ -266,6 +279,13 @@ def install_aquestalk_from_archive(archive_path: str, root: Optional[str] = None
                         if f2:
                             with open(out_base, "wb") as dst:
                                 shutil.copyfileobj(f2, dst)
+
+    # 同步 f1 64 位库至默认动态库位置，保证直接引用 AquesTalk.dll / libAquesTalk.so 时的兼容性
+    for lib_name in ["AquesTalk.dll", "libAquesTalk.so"]:
+        f1_candidate = os.path.join(target_lib64, "f1", lib_name)
+        if os.path.exists(f1_candidate):
+            shutil.copy2(f1_candidate, os.path.join(target_base, lib_name))
+            shutil.copy2(f1_candidate, os.path.join(target_lib64, lib_name))
 
     from yukkuri.config import AppConfig
     cfg = AppConfig(project_root=root)

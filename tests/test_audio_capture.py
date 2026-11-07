@@ -100,5 +100,42 @@ class TestAudioCapture(unittest.TestCase):
             self.assertIn("[虚拟声卡]", devices[2][1])
             self.assertIn("[虚拟声卡]", devices[3][1])
 
+    def test_wdmks_devices_strictly_filtered(self):
+        """测试 Windows 下 WDM-KS 内核流驱动设备被严格过滤排除"""
+        mock_hostapis = [
+            {"name": "MME"},
+            {"name": "Windows WASAPI"},
+            {"name": "Windows WDM-KS"},
+        ]
+        mock_devices = [
+            {"name": "Mic WASAPI", "max_input_channels": 2, "hostapi": 1},
+            {"name": "Mic WDM-KS", "max_input_channels": 2, "hostapi": 2},
+        ]
+        with patch("sys.platform", "win32"):
+            with patch("sounddevice.query_hostapis", return_value=mock_hostapis):
+                with patch("sounddevice.query_devices", return_value=mock_devices):
+                    inputs = get_input_devices()
+                    labels = [item[1] for item in inputs]
+                    self.assertTrue(any("Mic WASAPI" in l for l in labels))
+                    self.assertFalse(any("Mic WDM-KS" in l for l in labels))
+
+    def test_microphone_stream_auto_fallback_on_error(self):
+        """测试当指定硬件设备启动失败时，MicrophoneStream 能够自动回退至系统默认麦克风"""
+        stream = MicrophoneStream(sample_rate=16000, channels=1, device=99)
+
+        calls = []
+        def mock_open_and_start(dev):
+            calls.append(dev)
+            # 模拟设备 99 启动失败，默认设备 (None) 成功
+            if dev == 99:
+                return False
+            return True
+
+        stream._open_and_start_stream = mock_open_and_start
+        stream.start()
+
+        self.assertEqual(calls, [99, None])
+        self.assertIsNone(stream.device)
+
 if __name__ == "__main__":
     unittest.main()

@@ -40,11 +40,38 @@ class MicrophoneStream:
         """动态调整软件增益倍数"""
         self.gain = max(0.1, float(gain))
 
-    def _resolve_input_parameters(self) -> Tuple[int, int]:
+    @staticmethod
+    def _get_wasapi_extra_settings(device_id: Optional[int]):
+        """在 Windows 下为 WASAPI 设备配置 Shared Mode (共享模式)，避免独占模式引发底层驱动或占用冲突"""
+        if sys.platform == "win32" and hasattr(sd, "WasapiSettings"):
+            try:
+                dev_id = device_id
+                if dev_id is None:
+                    def_dev = sd.default.device
+                    dev_id = def_dev[0] if isinstance(def_dev, (list, tuple)) else def_dev
+                if dev_id is not None and dev_id >= 0:
+                    dev_info = sd.query_devices(dev_id, 'input')
+                    hostapis = sd.query_hostapis()
+                    dev_hostapi = hostapis[dev_info["hostapi"]]["name"].lower()
+                    if "wasapi" in dev_hostapi:
+                        return sd.WasapiSettings(exclusive=False)
+            except Exception:
+                pass
+        return None
+
+    def _resolve_input_parameters(self, device: Optional[int] = None) -> Tuple[int, int]:
         """探测并返回声卡硬件支持的 (sample_rate, channels)"""
+        target_device = self.device if device is None else device
+        extra_settings = self._get_wasapi_extra_settings(target_device)
+
         # 1. 优先尝试直接支持目标配置 (如 16000Hz, 1ch)
         try:
-            sd.check_input_settings(device=self.device, samplerate=self.sample_rate, channels=self.channels)
+            sd.check_input_settings(
+                device=target_device,
+                samplerate=self.sample_rate,
+                channels=self.channels,
+                extra_settings=extra_settings
+            )
             return self.sample_rate, self.channels
         except Exception:
             pass
@@ -53,7 +80,7 @@ class MicrophoneStream:
         default_sr = 48000
         max_ch = 2
         try:
-            dev_info = sd.query_devices(self.device, 'input')
+            dev_info = sd.query_devices(target_device, 'input')
             default_sr = int(dev_info.get('default_samplerate', 48000))
             max_ch = int(dev_info.get('max_input_channels', 2))
         except Exception:
@@ -72,7 +99,12 @@ class MicrophoneStream:
         for sr in candidate_srs:
             for ch in candidate_chs:
                 try:
-                    sd.check_input_settings(device=self.device, samplerate=sr, channels=ch)
+                    sd.check_input_settings(
+                        device=target_device,
+                        samplerate=sr,
+                        channels=ch,
+                        extra_settings=extra_settings
+                    )
                     return sr, ch
                 except Exception:
                     continue
@@ -117,13 +149,13 @@ class MicrophoneStream:
             clean_samples = np.nan_to_num(resampled, copy=False)
             self.queue.put(clean_samples)
 
-    def start(self):
-        if self._stream is not None:
-            return
-
-        actual_sr, actual_ch = self._resolve_input_parameters()
+    def _open_and_start_stream(self, device: Optional[int]) -> bool:
+        """尝试打开并启动指定设备的音频采集流，若失败则安全释放资源"""
+        actual_sr, actual_ch = self._resolve_input_parameters(device)
         self.actual_sample_rate = actual_sr
         self.actual_channels = actual_ch
+
+        extra_settings = self._get_wasapi_extra_settings(device)
 
         # 计算自适应硬件 blocksize (保持 50ms 左右切片)
         if actual_sr == self.sample_rate:
@@ -131,28 +163,72 @@ class MicrophoneStream:
         else:
             hw_blocksize = int(round(actual_sr * 0.05))
 
+        # 优先尝试指定块大小打开
         try:
             self._stream = sd.InputStream(
                 samplerate=actual_sr,
                 channels=actual_ch,
                 dtype=self.dtype,
                 blocksize=hw_blocksize,
-                device=self.device,
+                device=device,
+                extra_settings=extra_settings,
                 callback=self._audio_callback
             )
             self._stream.start()
             if actual_sr != self.sample_rate or actual_ch != self.channels:
                 print(f"[麦克风采集已自适应]: 硬件格式 {actual_sr}Hz/{actual_ch}ch -> 自动重采样为 {self.sample_rate}Hz/单声道")
+            return True
         except Exception:
-            # 若指定块大小失败，回退到系统自适应缓冲区
+            if self._stream is not None:
+                try:
+                    self._stream.close()
+                except Exception:
+                    pass
+                self._stream = None
+
+        # 若失败，回退到系统自适应缓冲区大小尝试
+        try:
             self._stream = sd.InputStream(
                 samplerate=actual_sr,
                 channels=actual_ch,
                 dtype=self.dtype,
-                device=self.device,
+                device=device,
+                extra_settings=extra_settings,
                 callback=self._audio_callback
             )
             self._stream.start()
+            if actual_sr != self.sample_rate or actual_ch != self.channels:
+                print(f"[麦克风采集已自适应]: 硬件格式 {actual_sr}Hz/{actual_ch}ch -> 自动重采样为 {self.sample_rate}Hz/单声道")
+            return True
+        except Exception:
+            if self._stream is not None:
+                try:
+                    self._stream.close()
+                except Exception:
+                    pass
+                self._stream = None
+            return False
+
+    def start(self):
+        if self._stream is not None:
+            return
+
+        # 1. 优先尝试以指定设备启动
+        success = self._open_and_start_stream(self.device)
+        if success:
+            return
+
+        # 2. 如果指定了特定设备且启动失败，自动回退到系统默认麦克风 (device=None)
+        if self.device is not None:
+            print(f"[麦克风警告] 无法启动所选麦克风 (设备 ID: {self.device})，正在自动安全回退至系统默认麦克风...", file=sys.stderr)
+            fallback_success = self._open_and_start_stream(None)
+            if fallback_success:
+                print(f"[麦克风提示] 已成功回退至系统默认麦克风正常运行。")
+                self.device = None
+                return
+
+        # 3. 若全部失败，抛出友好的错误信息
+        raise RuntimeError(f"无法启动麦克风音频采集流 (设备 ID: {self.device})，请检查麦克风权限或更换输入设备。")
 
     def stop(self):
         if self._stream is not None:

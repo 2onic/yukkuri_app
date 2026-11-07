@@ -156,5 +156,22 @@ class TestVAD(unittest.TestCase):
         pipeline.vad = None
         self.assertFalse(pipeline.is_speech_detected)
 
+    def test_accept_waveform_preserves_samples_before_pop(self):
+        """测试 accept_waveform 在 pop() 之前读取并复制 samples，避免 C++ 引用失效导致空数据"""
+        mock_detector = MagicMock()
+        mock_detector.empty.side_effect = [False, True]
+        mock_seg = MagicMock()
+        mock_seg.samples = [0.1, 0.2, 0.3]
+        mock_detector.front = mock_seg
+
+        vad = SileroVAD.__new__(SileroVAD)
+        vad._detector = mock_detector
+        vad.max_speech_duration = 0.0
+        vad.sample_rate = 16000
+
+        segs = vad.accept_waveform(np.zeros(800, dtype=np.float32))
+        self.assertEqual(len(segs), 1)
+        np.testing.assert_allclose(segs[0], [0.1, 0.2, 0.3])
+
 if __name__ == "__main__":
     unittest.main()

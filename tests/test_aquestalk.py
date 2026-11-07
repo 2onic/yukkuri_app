@@ -20,11 +20,11 @@ class TestAquesTalkMultiVoice(unittest.TestCase):
         # f1 and f2 should resolve if present
         f1_path = self.config.find_aquestalk_library("f1")
         if f1_path:
-            self.assertTrue(f1_path.endswith(".so"))
+            self.assertTrue(f1_path.endswith((".so", ".dll")))
 
         f2_path = self.config.find_aquestalk_library("f2")
         if f2_path:
-            self.assertTrue(f2_path.endswith(".so"))
+            self.assertTrue(f2_path.endswith((".so", ".dll")))
 
     def test_model_status_includes_aquestalk(self):
         status = check_model_status()

@@ -164,7 +164,16 @@ class YukkuriApp(ctk.CTk):
         self.gain_label.pack(anchor="w", padx=12, pady=(4, 0))
         self.gain_slider = ctk.CTkSlider(dev_card, from_=0.5, to=3.0, number_of_steps=25, command=self._on_gain_changed)
         self.gain_slider.set(1.0)
-        self.gain_slider.pack(fill="x", padx=12, pady=(2, 12))
+        self.gain_slider.pack(fill="x", padx=12, pady=(2, 6))
+
+        # 实时音量跳动指示条
+        level_frame = ctk.CTkFrame(dev_card, fg_color="transparent")
+        level_frame.pack(fill="x", padx=12, pady=(0, 10))
+        level_frame.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(level_frame, text="拾音电平:", font=ctk.CTkFont(size=12)).grid(row=0, column=0, padx=(0, 6), sticky="w")
+        self.level_bar = ctk.CTkProgressBar(level_frame, height=10, progress_color="#2FA572")
+        self.level_bar.set(0.0)
+        self.level_bar.grid(row=0, column=1, sticky="ew")
 
         # 分组 3: 语速与端点灵敏度
         tune_card = self._create_card(left_panel, "声音与断句调优")
@@ -640,6 +649,7 @@ class YukkuriApp(ctk.CTk):
             if msg_type == "started":
                 self.is_running = True
                 self.btn_toggle.configure(state="normal", text="⏹ 停止转换器", fg_color="#E04747", hover_color="#C62828")
+                self.status_indicator.configure(text="● 正在监听 (等待说话)", text_color="#2FA572")
                 if sys.platform == "win32":
                     self._append_log("系统", "转换器启动成功！已推流至 [CABLE Input]，请在语音软件中将麦克风选择为 [CABLE Output]")
                 else:
@@ -672,6 +682,19 @@ class YukkuriApp(ctk.CTk):
                 tag = "播报" if stats.get("manual") else "语音"
                 meta_str = f"音标: {koe}  |  延迟: ASR {stats['t_asr']:.0f}ms, G2P {stats['t_g2p']:.0f}ms, TTS {stats['t_tts']:.0f}ms (总计 {stats['total_time']:.0f}ms)"
                 self._append_log(tag, f"【原文】{text}", meta=meta_str)
+
+        # 实时动态电平与讲话状态指示
+        if self.is_running and self.pipeline:
+            if hasattr(self, "level_bar") and self.pipeline.mic_stream:
+                lvl = getattr(self.pipeline.mic_stream, "current_level", 0.0)
+                self.level_bar.set(min(1.0, float(lvl)))
+            if self.pipeline.is_speech_detected:
+                self.status_indicator.configure(text="● 正在讲话 (检测到人声)...", text_color="#FFB74D")
+            else:
+                self.status_indicator.configure(text="● 正在监听 (等待说话)", text_color="#2FA572")
+        else:
+            if hasattr(self, "level_bar"):
+                self.level_bar.set(0.0)
 
         self.after(50, self._process_queue)
 
