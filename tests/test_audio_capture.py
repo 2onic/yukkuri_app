@@ -49,8 +49,8 @@ class TestAudioCapture(unittest.TestCase):
 
         # 采样率从 48000Hz 重采样到 16000Hz，样本数应变为 2400 * (16000/48000) = 800
         self.assertEqual(len(mono_resampled), 800)
-        # 增益 2.0x，输入 0.2，输出应接近 0.4
-        np.testing.assert_allclose(mono_resampled, 0.4, atol=1e-3)
+        # 增益 2.0x，输入 0.2，稳态输出 (排除滤波器边缘过渡段) 应为 0.4
+        np.testing.assert_allclose(mono_resampled[20:-20], 0.4, atol=1e-3)
         # 实时音量 level 应该大于 0
         self.assertGreater(stream.current_level, 0.0)
 

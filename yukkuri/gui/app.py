@@ -40,9 +40,11 @@ class YukkuriApp(ctk.CTk):
         self.is_running = False
         self.msg_queue: queue.Queue = queue.Queue()
 
-        # 音频设备映射
+        # 音频设备映射与状态缓存
         self.device_map: Dict[str, Optional[int]] = {}
+        self.output_device_map: Dict[str, Optional[int]] = {}
         self.monitor_device_map: Dict[str, Optional[int]] = {}
+        self._last_speech_state: Optional[bool] = None
 
         # 构建界面
         self._build_ui()
@@ -229,8 +231,20 @@ class YukkuriApp(ctk.CTk):
             self.switch_dyn_mic.pack(padx=12, pady=(0, 10), anchor="w")
         else:
             self.switch_dyn_mic = None
+            ctk.CTkLabel(opt_card, text="主推流目标声卡 (虚拟麦克风):", font=ctk.CTkFont(size=12)).pack(anchor="w", padx=12, pady=(4, 2))
+            self.output_device_menu = ctk.CTkOptionMenu(
+                opt_card,
+                values=["自动检测 (优先 VB-CABLE)"],
+                command=self._on_output_device_changed
+            )
+            self.output_device_menu.pack(fill="x", padx=12, pady=(0, 8))
+
             ctk.CTkLabel(opt_card, text="耳机监听输出设备 (回放输出):", font=ctk.CTkFont(size=12)).pack(anchor="w", padx=12, pady=(4, 2))
-            self.monitor_menu = ctk.CTkOptionMenu(opt_card, values=["系统默认 (Default)"])
+            self.monitor_menu = ctk.CTkOptionMenu(
+                opt_card,
+                values=["系统默认 (Default)"],
+                command=self._on_monitor_device_changed
+            )
             self.monitor_menu.pack(fill="x", padx=12, pady=(0, 10))
 
         # 3. 右侧内容区 (日志与快捷播报)
@@ -319,16 +333,29 @@ class YukkuriApp(ctk.CTk):
             self.device_menu.configure(values=labels)
             self.device_menu.set(labels[0])
 
-        if sys.platform == "win32" and hasattr(self, "monitor_menu"):
+        if sys.platform == "win32":
             out_devices = get_output_devices()
-            self.monitor_device_map.clear()
-            out_labels = []
-            for dev_id, label in out_devices:
-                self.monitor_device_map[label] = dev_id
-                out_labels.append(label)
-            if out_labels:
-                self.monitor_menu.configure(values=out_labels)
-                self.monitor_menu.set(out_labels[0])
+
+            if hasattr(self, "output_device_menu"):
+                self.output_device_map.clear()
+                out_labels = ["自动检测 (优先 VB-CABLE)"]
+                self.output_device_map["自动检测 (优先 VB-CABLE)"] = None
+                for dev_id, label in out_devices:
+                    if dev_id is not None:
+                        self.output_device_map[label] = dev_id
+                        out_labels.append(label)
+                self.output_device_menu.configure(values=out_labels)
+                self.output_device_menu.set(out_labels[0])
+
+            if hasattr(self, "monitor_menu"):
+                self.monitor_device_map.clear()
+                mon_labels = []
+                for dev_id, label in out_devices:
+                    self.monitor_device_map[label] = dev_id
+                    mon_labels.append(label)
+                if mon_labels:
+                    self.monitor_menu.configure(values=mon_labels)
+                    self.monitor_menu.set(mon_labels[0])
 
     def _refresh_voices(self):
         """刷新并加载可用的 AquesTalk 声线列表"""
@@ -388,6 +415,25 @@ class YukkuriApp(ctk.CTk):
                 self._append_log("系统", "已开启回放监听预设 (启动转换器时将自动开启)")
             else:
                 self._append_log("系统", "已关闭回放监听预设")
+
+    def _on_output_device_changed(self, choice: str):
+        if self.pipeline and self.is_running:
+            out_id = self.output_device_map.get(choice, None)
+            self.pipeline.config.output_device = out_id
+            self.pipeline.set_output_device(out_id)
+            self._append_log("系统", f"已实时切换主推流目标声卡为: {choice}")
+        else:
+            self._append_log("系统", f"预设主推流目标声卡: {choice}")
+
+    def _on_monitor_device_changed(self, choice: str):
+        if self.pipeline and self.is_running:
+            mon_id = self.monitor_device_map.get(choice, None)
+            self.pipeline.config.monitor_device = mon_id
+            if hasattr(self.pipeline.player, "set_monitor"):
+                self.pipeline.player.set_monitor(bool(self.switch_loopback.get()), device_id=mon_id)
+            self._append_log("系统", f"已实时切换监听输出设备为: {choice}")
+        else:
+            self._append_log("系统", f"预设监听输出设备: {choice}")
 
     def _on_gain_changed(self, value):
         gain = round(float(value), 1)
@@ -497,6 +543,11 @@ class YukkuriApp(ctk.CTk):
         vad_max_speech = round(float(self.max_speech_slider.get()), 1)
         mic_gain = round(float(self.gain_slider.get()), 1)
         output_gain = round(float(self.output_gain_slider.get()), 1)
+        output_device_id = None
+        if sys.platform == "win32" and hasattr(self, "output_device_menu"):
+            selected_out_label = self.output_device_menu.get()
+            output_device_id = self.output_device_map.get(selected_out_label, None)
+
         monitor_device_id = None
         if sys.platform == "win32" and hasattr(self, "monitor_menu"):
             selected_mon_label = self.monitor_menu.get()
@@ -515,6 +566,7 @@ class YukkuriApp(ctk.CTk):
             voice=selected_voice,
             speed=speed,
             device=device_id,
+            output_device=output_device_id,
             monitor_device=monitor_device_id,
             mic_gain=mic_gain,
             output_gain=output_gain,
@@ -648,15 +700,18 @@ class YukkuriApp(ctk.CTk):
 
             if msg_type == "started":
                 self.is_running = True
+                self._last_speech_state = False
                 self.btn_toggle.configure(state="normal", text="⏹ 停止转换器", fg_color="#E04747", hover_color="#C62828")
                 self.status_indicator.configure(text="● 正在监听 (等待说话)", text_color="#2FA572")
                 if sys.platform == "win32":
-                    self._append_log("系统", "转换器启动成功！已推流至 [CABLE Input]，请在语音软件中将麦克风选择为 [CABLE Output]")
+                    out_name = self.output_device_menu.get() if hasattr(self, "output_device_menu") else "自动检测"
+                    self._append_log("系统", f"转换器启动成功！已推流至 [{out_name}]")
                 else:
                     self._append_log("系统", "转换器启动成功！请在软件中将麦克风选择为 [Yukkuri Virtual Mic]")
 
             elif msg_type == "stopped":
                 self.is_running = False
+                self._last_speech_state = None
                 self.pipeline = None
                 self.btn_toggle.configure(state="normal", text="▶ 启动转换器", fg_color="#2FA572", hover_color="#228B5B")
                 self.status_indicator.configure(text="● 已停止", text_color="#9E9E9E")
@@ -664,12 +719,14 @@ class YukkuriApp(ctk.CTk):
 
             elif msg_type == "error":
                 self.is_running = False
+                self._last_speech_state = None
                 self.btn_toggle.configure(state="normal", text="▶ 启动转换器", fg_color="#2FA572", hover_color="#228B5B")
                 self.status_indicator.configure(text="● 启动失败", text_color="#EF5350")
                 self._append_log("系统", f"错误: {data}")
 
             elif msg_type == "error_model":
                 self.is_running = False
+                self._last_speech_state = None
                 self.btn_toggle.configure(state="normal", text="▶ 启动转换器", fg_color="#2FA572", hover_color="#228B5B")
                 self.status_indicator.configure(text="● 缺少模型", text_color="#FFA726")
                 self._append_log("系统", f"提示: {data}")
@@ -683,18 +740,22 @@ class YukkuriApp(ctk.CTk):
                 meta_str = f"音标: {koe}  |  延迟: ASR {stats['t_asr']:.0f}ms, G2P {stats['t_g2p']:.0f}ms, TTS {stats['t_tts']:.0f}ms (总计 {stats['total_time']:.0f}ms)"
                 self._append_log(tag, f"【原文】{text}", meta=meta_str)
 
-        # 实时动态电平与讲话状态指示
+        # 实时动态电平与讲话状态指示 (具备状态节流缓存，避免高频无谓重绘)
         if self.is_running and self.pipeline:
             if hasattr(self, "level_bar") and self.pipeline.mic_stream:
                 lvl = getattr(self.pipeline.mic_stream, "current_level", 0.0)
                 self.level_bar.set(min(1.0, float(lvl)))
-            if self.pipeline.is_speech_detected:
-                self.status_indicator.configure(text="● 正在讲话 (检测到人声)...", text_color="#FFB74D")
-            else:
-                self.status_indicator.configure(text="● 正在监听 (等待说话)", text_color="#2FA572")
+            is_speaking = self.pipeline.is_speech_detected
+            if is_speaking != self._last_speech_state:
+                self._last_speech_state = is_speaking
+                if is_speaking:
+                    self.status_indicator.configure(text="● 正在讲话 (检测到人声)...", text_color="#FFB74D")
+                else:
+                    self.status_indicator.configure(text="● 正在监听 (等待说话)", text_color="#2FA572")
         else:
             if hasattr(self, "level_bar"):
                 self.level_bar.set(0.0)
+            self._last_speech_state = None
 
         self.after(50, self._process_queue)
 

@@ -205,6 +205,42 @@ class TestFixesVerification(unittest.TestCase):
                 mock_popen.assert_not_called()
         player_lnx.stop()
 
+    def test_windows_monitor_allowed_when_no_cable(self):
+        """测试在未安装 VB-CABLE 时，开启回放监听仍可向耳机推流而不被错误中断"""
+        player_win = WindowsWASAPIPlayer(
+            output_device=None,
+            monitor_device=5,
+            enable_monitor=True,
+            allow_default_speaker=False
+        )
+        with patch.object(player_win, "find_default_cable_input", return_value=None):
+            with patch.object(player_win, "_prepare_audio_for_device", return_value=(np.zeros((100, 2), dtype=np.int16), 48000, 2)) as mock_prep:
+                with patch.object(player_win, "_get_or_create_stream") as mock_stream:
+                    mock_s2 = MagicMock()
+                    mock_stream.return_value = mock_s2
+                    dummy_wav = b"RIFF" + b"\x00" * 40 + np.zeros(200, dtype=np.int16).tobytes()
+                    player_win._play_streams(dummy_wav)
+
+                    # 主推流被拦截，因此 mock_stream 不应以 "main" 调用
+                    calls = [call[0][0] for call in mock_stream.call_args_list]
+                    self.assertNotIn("main", calls)
+                    # 耳机监听应当被允许并以 "monitor" 调用
+                    self.assertIn("monitor", calls)
+                    mock_s2.write.assert_called()
+        player_win.stop()
+
+    def test_pipeline_set_output_device(self):
+        """测试流水线级动态切换主输出目标声卡"""
+        config = AppConfig()
+        asr = MockASR()
+        tts = MockTTS()
+        pipeline = YukkuriPipeline(config=config, asr=asr, tts=tts)
+        pipeline.player = MagicMock()
+
+        pipeline.set_output_device(19)
+        self.assertEqual(pipeline.config.output_device, 19)
+        pipeline.player.set_output_device.assert_called_with(19)
+
     def test_pipeline_stop_idempotent(self):
         """额外2: 测试 Pipeline stop() 多线程并发调用的幂等性"""
         config = AppConfig()

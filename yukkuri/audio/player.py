@@ -75,6 +75,10 @@ class BaseAudioPlayer(abc.ABC):
         """设置软件输出音量增益"""
         pass
 
+    def set_output_device(self, device_id: Optional[int]):
+        """设置主推流输出目标设备 (在 Windows 模式下生效)"""
+        pass
+
 
 class LinuxPipeWirePlayer(BaseAudioPlayer):
     """
@@ -200,6 +204,9 @@ class WindowsWASAPIPlayer(BaseAudioPlayer):
         self.queue: queue.Queue = queue.Queue()
         self.running = True
 
+        self._has_warned_no_cable = False
+        self._has_notified_monitor_only = False
+
         self._stream_out: Optional[sd.OutputStream] = None
         self._stream_out_params: Optional[Tuple[Optional[int], int, int]] = None
         self._stream_mon: Optional[sd.OutputStream] = None
@@ -219,6 +226,8 @@ class WindowsWASAPIPlayer(BaseAudioPlayer):
             self.enable_monitor = enable
             if device_id is not None:
                 self.monitor_device = device_id
+            self._has_warned_no_cable = False
+            self._has_notified_monitor_only = False
             if not enable and self._stream_mon is not None:
                 try:
                     self._stream_mon.stop()
@@ -233,6 +242,8 @@ class WindowsWASAPIPlayer(BaseAudioPlayer):
         with self._stream_lock:
             if self.output_device != device_id:
                 self.output_device = device_id
+                self._has_warned_no_cable = False
+                self._has_notified_monitor_only = False
                 if self._stream_out is not None:
                     try:
                         self._stream_out.stop()
@@ -420,28 +431,43 @@ class WindowsWASAPIPlayer(BaseAudioPlayer):
         if out_dev is None:
             out_dev = self.find_default_cable_input()
 
-        # 防外放隐私保护：如果既未显式指定设备，也未找到 VB-CABLE，且未显式允许外放，则拦截
+        main_allowed = True
+        # 防外放隐私保护：如果既未显式指定设备，也未找到 VB-CABLE，且未显式允许外放，则拦截主推流
         if out_dev is None and not self.allow_default_speaker:
-            print("[播放警告] 未找到虚拟音频输出设备 (VB-CABLE)，已拦截静默外放以防止物理扬声器隐私泄露。请先安装 VB-CABLE 或在配置中指定输出设备。", file=sys.stderr)
-            return
+            main_allowed = False
 
         mon_dev = self.monitor_device
-        should_monitor = self.enable_monitor and (mon_dev is not None or out_dev is not None)
+        should_monitor = self.enable_monitor
+
+        if not main_allowed and not should_monitor:
+            if not self._has_warned_no_cable:
+                print("[播放警告] 未找到虚拟音频输出设备 (VB-CABLE)，已拦截静默外放以防止物理扬声器隐私泄露。请先安装 VB-CABLE 或在配置中指定输出设备。", file=sys.stderr)
+                self._has_warned_no_cable = True
+            return
+
+        if not main_allowed and should_monitor:
+            if not self._has_notified_monitor_only:
+                print("[播放提示] 未检测到 VB-CABLE 主输出虚拟声卡，主推流已静音保护，仅通过耳机监听设备回放合成语音。", file=sys.stderr)
+                self._has_notified_monitor_only = True
+
+        data_out = None
+        s1 = None
+        data_mon = None
+        s2 = None
 
         try:
-            data_out, sr_out, ch_out = self._prepare_audio_for_device(audio_array, sample_rate, out_dev)
-            s1 = self._get_or_create_stream("main", out_dev, sr_out, ch_out)
+            if main_allowed:
+                data_out, sr_out, ch_out = self._prepare_audio_for_device(audio_array, sample_rate, out_dev)
+                s1 = self._get_or_create_stream("main", out_dev, sr_out, ch_out)
 
-            data_mon = None
-            s2 = None
             if should_monitor:
                 data_mon, sr_mon, ch_mon = self._prepare_audio_for_device(audio_array, sample_rate, mon_dev)
                 s2 = self._get_or_create_stream("monitor", mon_dev, sr_mon, ch_mon)
 
             if s1 or s2:
                 chunk_size = 512
-                len_out = len(data_out) if s1 else 0
-                len_mon = len(data_mon) if s2 else 0
+                len_out = len(data_out) if (s1 and data_out is not None) else 0
+                len_mon = len(data_mon) if (s2 and data_mon is not None) else 0
                 max_len = max(len_out, len_mon)
                 for i in range(0, max_len, chunk_size):
                     if not self.running:
@@ -548,3 +574,7 @@ class AudioPlayer(BaseAudioPlayer):
 
     def set_gain(self, gain: float):
         self._impl.set_gain(gain)
+
+    def set_output_device(self, device_id: Optional[int]):
+        if hasattr(self._impl, "set_output_device"):
+            self._impl.set_output_device(device_id)

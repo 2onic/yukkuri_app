@@ -93,6 +93,12 @@ class YukkuriPipeline:
         if self.player:
             self.player.set_gain(self.config.output_gain)
 
+    def set_output_device(self, device_id: Optional[int]):
+        """动态切换主输出目标设备 (Windows WASAPI/VB-CABLE)"""
+        self.config.output_device = device_id
+        if self.player:
+            self.player.set_output_device(device_id)
+
     @property
     def is_speech_detected(self) -> bool:
         """当前是否正在检测到持续人声"""
