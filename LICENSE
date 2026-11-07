@@ -54,6 +54,7 @@ Third-Party Notices and Disclaimers
    - CustomTkinter: Copyright (c) 2023 Tom Schimansky, licensed under MIT.
    - sounddevice / PortAudio: Copyright (c) PortAudio contributors, licensed under MIT.
    - numpy: Copyright (c) NumPy Developers, licensed under BSD-3-Clause.
+   - scipy: Copyright (c) SciPy Developers, licensed under BSD-3-Clause.
 
 5. Audio Content Disclaimer
    - The authors of this software are not responsible for any audio content 

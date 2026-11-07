@@ -20,6 +20,7 @@ dependencies = [
     "sherpa-onnx>=1.10.0",
     "vosk>=0.3.45",
     "customtkinter>=5.2.0",
+    "scipy>=1.8.0",
 ]
 
 [project.scripts]

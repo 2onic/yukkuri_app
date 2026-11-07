@@ -6,245 +6,185 @@
 [![TTS](https://img.shields.io/badge/TTS-AquesTalk1-red.svg)](https://www.a-quest.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-一个跨平台的**实时语音转油库里音效**虚拟麦克风工具（支持 Linux PipeWire 与 Windows WASAPI）。
+一个跨平台的实时语音转油库里音效虚拟麦克风工具，支持 Linux (PipeWire) 与 Windows (WASAPI)。
 
-说出普通话、英语或日语，程序将实时识别，并通过 **AquesTalk1** 引擎实时合成出油库里语音，注入到虚拟麦克风节点中。可在 Discord、腾讯会议、OBS中直接作为麦克风使用。
-
-> [!WARNING]
-> **关于 Windows 兼容模式的声明**：  
-> 该工具**主要针对 Linux (PipeWire) 开发与优化，不保证 Windows 兼容模式能完全正常工作**。Windows 支持属于实验性质，依赖第三方 VB-CABLE 驱动与 WASAPI 升混，不同系统版本和声卡硬件可能存在差异。
+输入中文、英文或日文语音，程序进行实时识别后通过 AquesTalk1 引擎合成为油库里假名语音，并推流至虚拟麦克风，供 Discord、OBS、会议软件等直接调用。
 
 ---
 
-## 核心特性
+## 主要功能
 
-- **多声线自由切换 (9 种经典声线)**：
-  - 支持 **f1** (女声1)、**f2** (女声2)、**f3** (女声3)、**m1/m2** (男声1/2)、**imd1** (中性音)、**jgr** (机械音)、**dvd** (播音员)、**r1** (机器人)；
-  - GUI 界面支持运行中**实时热切换**，命令行支持 `--voice` 选项。
-- **经典油库里空耳调教 (Polyglot G2P)**：
-  - **中文**：自动将汉字转为拼音并映射为油库里假名音标（如 *“你好”* -> `にー/はお`，*“我是油库里”* -> `うぉ/しー/ゆっくり`）；
-  - **英文**：常用词外来语化 + 音节音译 + 字母拼读（如 *“Hello world”* -> `へろー/わーるど`，*“CPU”* -> `しーぴーゆー`）；
-  - **日文**：原生假名合成，自动纠偏助词读音（`は/へ` -> `わ/え`）；
-  - **中英日数字混排**：多语言混合自然发音，无需繁琐切换语种。
-- **智能 VAD 与断句保护**：
-  - 说话停顿自适应切片（支持 200ms ~ 700ms 动态滑块调节）；
-  - **最长单句截断保护 (Max Speech Duration)**：防止长句或高环境底噪下积压超长语音缓冲导致卡顿（默认 6.0s，可调 2.0s ~ 15.0s，且支持手动关闭）。
-- **麦克风软件增益 (Mic Software Gain)**：
-  - 支持 0.5x ~ 3.0x（默认 1.0x 标准音量）无级调节，有效解决麦克风拾音偏小或过大的问题。
-- **跨平台物理隔离音频推流**：
-  - **Linux 平台**：完全基于 PipeWire / PulseAudio 原生管道（`pw-play --target yukkuri_sink`），运行时自动通过 `pactl` 动态创建与清理虚拟麦克风（`Yukkuri Virtual Mic`），100% 杜绝 sounddevice 播放通道污染；
-  - **Windows 平台**：适配 VB-Audio Virtual Cable + WASAPI 专有输出，内置自动采样率协商与 8000Hz Mono -> 48000Hz Stereo 双声道升混重采样。
+- **声线支持**：
+  - 支持 9 种声线：`f1`（女声1）、`f2`（女声2）、`f3`（女声3）、`m1/m2`（男声1/2）、`imd1`（中性音）、`jgr`（老者音）、`dvd`（电台音）、`r1`（机器人音）；
+  - 支持在运行中直接切换声线。
+- **发音转换 (G2P)**：
+  - 中文：汉字转拼音并映射为假名（例如“你好” -> `にー/はお`）；
+  - 英文：单词音译与字母拼读（例如“Hello world” -> `へろー/わーるど`）；
+  - 日文：原生假名转换与读音校正；
+  - 支持中英日混合输入。
+- **语音活动检测与切片 (VAD)**：
+  - 基于 Silero-VAD 进行静音停顿切片（断句间隔 200ms ~ 700ms 可调）；
+  - 支持单句最大录音长度限制（默认 6.0s，可自定义或关闭），防止环境底噪导致长音频积压。
+- **音量增益与电平监控**：
+  - 麦克风输入与合成输出增益可调（0.1x ~ 3.0x）；
+  - 界面提供输入音量条与监听/说话状态显示。
+- **音频推流与监听**：
+  - **Linux**：通过 PipeWire / PulseAudio 推流至 `yukkuri_sink`，自动创建虚拟麦克风；
+  - **Windows**：通过 WASAPI 共享模式推流至虚拟声卡（如 VB-CABLE Input），支持采样率转换与声道升混；
+  - 支持开启回放监听，通过耳机同步收听合成声音。
 
 ---
 
-## 系统架构
+## 运行架构
 
 ```mermaid
 flowchart TD
-    Mic[物理麦克风录音输入] --> VAD[Silero-VAD 语音活动检测]
-    VAD -->|说话停顿断句 / 强制截断保护| ASR[SenseVoice / Vosk 语音识别]
-    ASR -->|识别文本| G2P[Polyglot G2P 音标调教转换]
-    G2P -->|AquesTalk假名音标| TTS[AquesTalk1 多声线合成引擎]
-    TTS -->|8kHz Mono PCM 音频| Router{音频播放路由分派}
+    Mic[物理麦克风输入] --> VAD[Silero-VAD 语音活动检测]
+    VAD -->|静音断句 / 超时截断| ASR[SenseVoice / Vosk 语音识别]
+    ASR -->|文本| G2P[G2P 音标转换]
+    G2P -->|假名音标| TTS[AquesTalk1 语音合成]
+    TTS -->|PCM 音频| Router{音频输出分派}
 
-    subgraph Linux [Linux 原生通路]
-        Router -->|平台隔离| PW[pw-play 管道直接推流]
-        PW --> Sink[yukkuri_sink 虚拟声卡节点]
-        Sink --> LoopbackLnx[pw-loopback 可选耳机监听]
-        Sink --> VSource[Yukkuri Virtual Mic<br>供 Discord / OBS 录制输入]
+    subgraph Linux [Linux]
+        Router --> PW[pw-play 推流]
+        PW --> Sink[yukkuri_sink 虚拟声卡]
+        Sink --> LoopbackLnx[pw-loopback 耳机监听]
+        Sink --> VSource[Yukkuri Virtual Mic 虚拟麦克风]
     end
 
-    subgraph Windows [Windows 专有通路]
-        Router -->|平台隔离| WASAPI[WASAPI 格式自动协商]
-        WASAPI --> Resample[8kHz 单声道 -> 48kHz 立体声升混重采样]
-        Resample --> CableIn[CABLE Input 虚拟播放设备]
-        Resample --> MonitorWin[WASAPI 并发耳机自听监听]
-        CableIn --> CableOut[CABLE Output 虚拟麦克风<br>供 Discord / OBS 录制输入]
+    subgraph Windows [Windows]
+        Router --> WASAPI[WASAPI 输出]
+        WASAPI --> Resample[重采样 / 立体声升混]
+        Resample --> CableIn[CABLE Input 虚拟设备]
+        Resample --> MonitorWin[耳机监听输出]
+        CableIn --> CableOut[CABLE Output 虚拟麦克风]
     end
 ```
 
 ---
 
-## 快速上手
+## 安装与配置
 
-### 1. 克隆仓库与安装依赖
+### 1. 安装依赖
 
 ```bash
 git clone https://github.com/2onic/yukkuri_app.git
 cd yukkuri_app
 
-# 安装依赖并注册 yukkuri 与 yukkuri-gui 命令行
 pip install -e .
 ```
 
-### 2. 模型下载与 AquesTalk 声线库导入
+### 2. 模型下载与 AquesTalk 动态库导入
 
-本项目提供**跨平台一键配置脚本**（支持 Windows 与 Linux，无需 bash/curl/tar 等外部工具）：
+运行配置脚本下载离线模型：
 
 ```bash
-# 跨平台推荐（下载 Silero-VAD + SenseVoice 并自动扫描 AquesTalk）：
+# 下载识别模型与 VAD 模型：
 python setup_models.py
 
-# 导入 AquesTalk 多声线库（支持 zip、解压目录或 dll/so 库路径；留空则自动扫描）：
-python setup_models.py --aquestalk [文件或目录路径]
+# 导入 AquesTalk 动态库（支持 zip、目录或 dll/so 路径）：
+python setup_models.py --aquestalk [路径]
 
-# 查看当前各模型与声线库就绪状态表格：
+# 检查当前模型与声线状态：
 python setup_models.py --check
-
-# Linux 环境亦可直接执行脚本：
-./setup_models.sh
 ```
 
-> **关于 AquesTalk 专有授权的特别声明**：  
-> `libAquesTalk.so` (Linux) / `AquesTalk.dll` (Windows) 属于 **[株式会社アクエスト (Aquest Corp.)](https://www.a-quest.com/)** 的专有知识产权，本项目遵循开源许可**严禁且绝不自带打包或二次分发**其动态库文件。  
-> 用户请前往 [AQUEST 官方下载页](https://www.a-quest.com/download.html) 免费获取相应平台的评价版，解压后通过 `python setup_models.py --aquestalk` 或在 GUI 对话框中导入即可解锁全套 9 种声线。
+> **关于 AquesTalk 授权**：  
+> AquesTalk 动态库（`libAquesTalk.so` / `AquesTalk.dll`）版权属于 [株式会社アクエスト (Aquest Corp.)](https://www.a-quest.com/)，本项目不内置分发其动态库。用户需自行前往 [AQUEST 下载页](https://www.a-quest.com/download.html) 获取对应平台的评价版（Windows 为 `AquesTalk.dll`，Linux 为 `aqtk1_lnx_200.zip`），再通过配置脚本或 GUI 界面导入。
 
 ---
 
-### 3. 运行转换器
+### 3. 运行程序
 
-#### 方式 A：启动现代桌面图形界面 (GUI，推荐)
+#### 桌面图形界面 (GUI)
 
-- **Linux**：
-  ```bash
-  ./run.sh --gui
-  # 或直接运行全局命令
-  yukkuri-gui
-  ```
-- **Windows**：
-  - 直接双击运行目录下的 **`run.bat`**；
-  - 或在命令行中运行：`python -m yukkuri.cli --gui`
+- **Windows**：双击 `run.bat`，或执行 `python -m yukkuri.cli --gui`
+- **Linux**：执行 `./run.sh --gui` 或全局命令 `yukkuri-gui`
 
-#### 方式 B：终端命令行启动 (CLI)
+#### 命令行模式 (CLI)
 
 ```bash
-# Linux
-./run.sh
-./run.sh --loopback --voice f2
-
-# Windows
+# 默认启动
 python -m yukkuri.cli
+
+# 开启耳机监听并指定声线
 python -m yukkuri.cli --loopback --voice f2
 ```
 
 ---
 
-## Windows 平台使用指南
+## Windows 使用说明
 
-> [!WARNING]
-> **兼容性声明**：该工具主要针对 Linux 环境开发与测试，Windows 兼容模式属于实验性功能，**不保证在所有 Windows 版本或音频硬件上能完全正常工作**。
-
-1. **安装虚拟声卡驱动**：  
-   前往 [VB-Audio Virtual Cable 官网](https://vb-audio.com/Cable/) 下载安装免费版驱动（安装完成后可能需要重启电脑一次）。
-2. **下载模型与导入声线**：  
-   在终端运行 `python setup_models.py`，并将下载的 `AquesTalk.dll` 或 `aqtk1-win` 目录导入。
-3. **启动程序与语音软件配置**：  
-   - 双击运行 `run.bat`，点击 **【启动转换器】**；
-   - 打开 Discord、微信、QQ、腾讯会议、OBS 等语音或直播软件；
-   - 将软件中的**麦克风输入设备**选为：**`CABLE Output (VB-Audio Virtual Cable)`** 即可。
+1. **启动程序**：
+   - 双击根目录下的 `run.bat`，脚本会自动检测 Python 环境并打开 GUI；也可以在终端运行 `python -m yukkuri.cli --gui`。
+2. **模型与声线**：
+   - 首次使用可在界面中点击“语音模型与声线库管理”下载识别模型，并导入 `AquesTalk.dll`。
+3. **音频设备设置**：
+   - **虚拟麦克风**：安装 [VB-Audio Virtual Cable](https://vb-audio.com/Cable/) 后，在第三方语音软件（Discord、OBS、微信等）中将麦克风输入选为 `CABLE Output (VB-Audio Virtual Cable)`；
+   - **耳机监听**：勾选“回放监听”并选择耳机设备，可直接通过耳机收听合成语音。
 
 ---
 
-## AquesTalk 官方授权与密钥配置
+## AquesTalk 授权密钥配置
 
-AquesTalk1 属于 **株式会社AQUEST (Aquest Corp.)** 专有版权软件。官方允许个人非商业用途免费下载评价版体验。
+AquesTalk1 免费评价版会在部分发音中插入 "nu" 音作为限制。如果有官方授权密钥（DevKey 或 UsrKey），可通过以下方式配置解除限制：
 
-### 为什么需要配置官方密钥？
-1. **解除评价版发音限制**：  
-   AquesTalk1 免费评价版（Evaluation Version）内置了发音限制，会将特定音节（如 na 行、ma 行等）替换为 `"nu"` 音（例如日语中的 `な/に/ぬ/ね/の` 或中文音译中含有 `n/m` 的音节可能会发出 `"nu"`）。配置官方正式许可证密钥后，将完全解除该限制。
-2. **商用合规与分发**：  
-   若将本软件应用于商业环境、盈利性直播或自媒体公开发布视频，必须遵守 AQUEST 官方许可购买相应的正式授权许可证。
+### 配置方式（优先级由高到低）
 
-官方提供了两种密钥类型，本项目均完整支持：
-- **开发授权密钥（DevKey）**：通过 `AquesTalk_SetDevKey` 认证。
-- **使用授权密钥（UsrKey）**：通过 `AquesTalk_SetUsrKey` 认证。
-许可证办理与购买请前往：[AQUEST 官方许可证购买指引](https://www.a-quest.com/licence_aqtk.html)
-
----
-
-### 密钥配置方式
-
-本项目支持三种配置方式，按优先级由高到低生效：
-
-#### 方式一：本地 `.env` 配置文件（推荐，安全且 CLI / GUI 通用）
-在项目根目录下新建一个名为 `.env` 的文件：
-```ini
-# AquesTalk 官方开发授权密钥 (二选一)
-AQUESTALK_DEV_KEY=your_dev_key_here
-
-# 或使用使用授权密钥
-AQUESTALK_USR_KEY=your_usr_key_here
-```
-> [!TIP]
-> 无论是通过终端命令行还是直接启动桌面 GUI（`yukkuri-gui` / `run.bat`），程序启动时均会自动读取 `.env` 并注入认证，无需每次手动输入。
-
-#### 方式二：操作系统环境变量
-- **Linux (Bash / Zsh)**:
-  ```bash
-  export AQUESTALK_DEV_KEY="your_dev_key_here"
-  ```
-- **Windows (CMD)**:
-  ```cmd
-  set AQUESTALK_DEV_KEY=your_dev_key_here
-  ```
-- **Windows (PowerShell)**:
-  ```powershell
-  $env:AQUESTALK_DEV_KEY="your_dev_key_here"
-  ```
-
-#### 方式三：CLI 命令行参数
-在终端执行时直接传递参数：
-```bash
-# Linux
-yukkuri --dev-key "your_dev_key_here"
-# 或
-./run.sh --dev-key "your_dev_key_here"
-
-# Windows
-python -m yukkuri.cli --dev-key "your_dev_key_here"
-```
-*(若持有使用授权密钥，将 `--dev-key` 替换为 `--usr-key` 即可)*
+1. **`.env` 文件（推荐）**：
+   在项目根目录下创建 `.env`：
+   ```ini
+   AQUESTALK_DEV_KEY=your_key_here
+   # 或
+   AQUESTALK_USR_KEY=your_key_here
+   ```
+2. **环境变量**：
+   - Windows (PowerShell): `$env:AQUESTALK_DEV_KEY="your_key_here"`
+   - Linux: `export AQUESTALK_DEV_KEY="your_key_here"`
+3. **命令行参数**：
+   ```bash
+   python -m yukkuri.cli --dev-key "your_key_here"
+   ```
 
 ---
 
-## 进阶命令行参数说明
+## 命令行参数
 
-`yukkuri` 命令与 `./run.sh` 完整支持以下参数：
-
-| 参数 | 默认值 | 作用说明 |
+| 参数 | 默认值 | 说明 |
 | :--- | :--- | :--- |
-| `--engine` | `sensevoice` | 识别引擎：`sensevoice`（默认端到端高精度）或 `vosk`（轻量传统离线） |
-| `--voice` | `f1` | 油库里声线：`f1`, `f2`, `f3`, `m1`, `m2`, `imd1`, `jgr`, `dvd`, `r1` |
-| `--speed` | `100` | 说话语速百分比（50 ~ 300，推荐 `80` ~ `140`） |
-| `--mic-gain` | `1.0` | 麦克风软件增益倍数（`0.5` ~ `3.0`） |
-| `--output-gain` | `1.0` | 油库里合成输出音量增益倍数（`0.1` ~ `3.0`） |
-| `--max-speech-duration` | `6.0` | 最长单句强制截断保护时长（秒，设为 0 或负数则关闭截断） |
-| `--no-max-speech` | - | 手动关闭最长单句截断保护 |
-| `--loopback`, `--monitor` | 关闭 | 开启本地耳机实时回放自听监听 |
+| `--engine` | `sensevoice` | 识别引擎：`sensevoice` 或 `vosk` |
+| `--voice` | `f1` | 合成声线：`f1`, `f2`, `f3`, `m1`, `m2`, `imd1`, `jgr`, `dvd`, `r1` |
+| `--speed` | `100` | 语速百分比 (50 ~ 300) |
+| `--mic-gain` | `1.0` | 麦克风输入增益 (0.5 ~ 3.0) |
+| `--output-gain` | `1.0` | 合成输出增益 (0.1 ~ 3.0) |
+| `--max-speech-duration` | `6.0` | 单句最大截断时长（秒，<=0 表示不截断） |
+| `--no-max-speech` | - | 关闭单句截断 |
+| `--loopback`, `--monitor` | 关闭 | 开启本地耳机监听 |
 | `--device` | 系统默认 | 输入麦克风设备 ID |
-| `--output-device` | 系统默认 | 目标播放设备 ID（Windows 默认自动匹配 `CABLE Input`） |
-| `--monitor-device` | 系统默认 | 本地回放监听输出设备 ID（耳机/扬声器） |
-| `--lang` | `zh` | 发音/模型主语种（`zh`, `ja`, `en`；SenseVoice 原生支持多语种混读） |
-| `--target` | `yukkuri_sink` | Linux PipeWire 输出目标 Sink 名称 |
-| `--no-dynamic-mic` | - | 禁用 Linux pactl 自动动态加载/卸载虚拟声卡 |
-| `--dev-key` | 无 | AquesTalk 官方开发授权密钥（DevKey） |
-| `--usr-key` | 无 | AquesTalk 官方使用授权密钥（UsrKey） |
-| `--list-devices` | - | 列出当前系统的所有音频输入输出设备及其编号并退出 |
-| `--gui` | - | 启动桌面图形控制界面 |
+| `--output-device` | 系统默认 | 推流输出设备 ID（Windows 默认匹配 `CABLE Input`） |
+| `--monitor-device` | 系统默认 | 监听输出设备 ID |
+| `--lang` | `zh` | 主语种（`zh`, `ja`, `en`） |
+| `--target` | `yukkuri_sink` | Linux PipeWire 目标 Sink 名称 |
+| `--no-dynamic-mic` | - | 禁用 Linux pactl 自动管理虚拟声卡 |
+| `--dev-key` | 无 | AquesTalk 开发密钥 (DevKey) |
+| `--usr-key` | 无 | AquesTalk 使用密钥 (UsrKey) |
+| `--list-devices` | - | 列出可用音频设备并退出 |
+| `--gui` | - | 启动图形界面 |
 
 ---
 
 ## 版权与免责声明
 
 1. **AquesTalk1**：
-   - 本项目本身**不打包、不分发任何 AquesTalk 二进制专有动态库，亦不分发或提供任何商业授权密钥**；
-   - 语音合成引擎及动态库（`libAquesTalk.so` / `AquesTalk.dll`）属于 **[株式会社アクエスト (Aquest Corp.)](https://www.a-quest.com/)** 的专有版权财产，不受本项目 MIT 协议管辖；
-   - 个人非商业用途请遵守官方使用条款。如需商业用途、公开发布分发或解除评价版发音限制，用户须自行向 AQUEST 申请并购买合法的正式授权许可证，并通过 `--dev-key` 或环境变量 `AQUESTALK_DEV_KEY` 配置。
-2. **开源组件与依赖**：
-   - SenseVoice、sherpa-onnx、Vosk 遵循 Apache-2.0 开源协议；
-   - Silero VAD、CustomTkinter 遵循 MIT 开源协议；
-   - PipeWire 遵循 MIT / LGPL 开源协议；
-   - VB-Audio Virtual Cable 为 Vincent Burel / VB-Audio Software 的独立声卡驱动产品。
+   - 本项目不包含或分发任何 AquesTalk 二进制动态库，亦不提供授权密钥；
+   - 动态库（`libAquesTalk.so` / `AquesTalk.dll`）版权归 [株式会社アクエスト (Aquest Corp.)](https://www.a-quest.com/) 所有，不受本项目 MIT 协议管辖；
+   - 商用需求请向官方申请授权。
+2. **开源组件**：
+   - SenseVoice、sherpa-onnx、Vosk：Apache-2.0 协议；
+   - Silero VAD、CustomTkinter：MIT 协议；
+   - PipeWire：MIT / LGPL 协议；
+   - SciPy、NumPy：BSD-3-Clause 协议；
+   - VB-Audio Virtual Cable 属于 VB-Audio Software 独立产品。
 3. **免责声明**：
-   - 本工具仅供个人娱乐、语音技术交流及二创研究使用；
-   - 使用者通过本工具采集、合成与广播的任何音频内容，其合规性与法律责任由使用者自行承担，严禁用于侵犯他人合法权益或违法违规场景。
+   - 本工具仅供技术交流与个人使用；
+   - 使用者对通过本工具采集、合成并传播的音频内容承担全部责任。
